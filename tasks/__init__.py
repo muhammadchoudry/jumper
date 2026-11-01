@@ -55,6 +55,7 @@ from .registry import (
 # Adding a task means adding one line here; nothing under scripts/ changes.
 from .jumper import cartwheel  # noqa: F401,E402
 from .jumper import cartwheel_flat  # noqa: F401,E402
+from .jumper import cartwheel_runup  # noqa: F401,E402
 from .jumper import dance  # noqa: F401,E402
 from .jumper import dance_brazilian  # noqa: F401,E402
 from .jumper import dance_dream_wings  # noqa: F401,E402
