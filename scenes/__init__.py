@@ -61,6 +61,12 @@ register(
     use="watching",
 )
 register(
+    id="neon_stage",
+    description="dark navy grid floor with cyan and magenta rim lights -- for glowing skins",
+    tags=("presentation",),
+    use="watching",
+)
+register(
     id="daylight",
     description="blue sky, warm ground, one hard sun with shadows",
     tags=("presentation", "outdoor"),
