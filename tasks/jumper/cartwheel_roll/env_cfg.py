@@ -8,11 +8,12 @@ From `jumper.cartwheel`:
 
 Changed:
 - **Residual scale 0.7 rad** (was 0.25-0.4): room for stepping, folding, pumping.
-- **Rewards**: wheel turning forward and hub travelling forward (both only while on
-  edge), staying on edge, rolling straight; a light pull toward the star pose
+- **Rewards**: wheel turning forward (about the world axle, see `roll_mdp.roll_forward`)
+  and hub travelling forward (weight 3; both only while on edge), staying on edge, rolling straight; a light pull toward the star pose
   (`ref_joint_pos`, weight 0.3, wide kernel) so the legs stay spokes, not a crawl;
   shell/upper-limb ground contact -2. All other imitation terms dropped.
-- **Terminations**: toppled more than ~44 deg off the edge, or time out. No
+- **Terminations**: toppled more than ~44 deg off the edge, hub below 0.15 m (legs
+  folded, tumbling on its knees), or time out. No
   reference-divergence terminations -- diverging is the point.
 """
 
@@ -49,7 +50,7 @@ def env_cfg(asset: Path | None = None, play: bool = False):
         **keep,
         "ref_joint_pos": ref_pos,
         "roll_forward": RewardTermCfg(func=roll_mdp.roll_forward, weight=3.0),
-        "travel_forward": RewardTermCfg(func=roll_mdp.travel_forward, weight=1.5),
+        "travel_forward": RewardTermCfg(func=roll_mdp.travel_forward, weight=3.0),
         "on_edge": RewardTermCfg(func=roll_mdp.on_edge, weight=1.0),
         "straight": RewardTermCfg(func=roll_mdp.straight, weight=0.5),
     }
@@ -57,6 +58,7 @@ def env_cfg(asset: Path | None = None, play: bool = False):
     cfg.terminations = {
         "time_out": cfg.terminations["time_out"],
         "fell_off_edge": TerminationTermCfg(func=roll_mdp.fell_off_edge, params={"max_tilt_cos": 0.7}),
+        "hub_too_low": TerminationTermCfg(func=roll_mdp.hub_too_low, params={"min_height": 0.15}),
     }
 
     # spawn anywhere in the first 2.5 turns of the roll

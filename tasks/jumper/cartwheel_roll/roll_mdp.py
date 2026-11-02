@@ -30,11 +30,15 @@ def on_edge(env, sigma_sq: float = 0.05, asset_cfg: SceneEntityCfg = _ROBOT) -> 
 
 def roll_forward(env, max_rate: float = 4.0, sigma_sq: float = 0.05,
                  asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
-    """Wheel spin (rad/s about body -z), clipped to [-max_rate, max_rate] and scaled to
-    [-1, 1], counted only while on edge -- so spinning flat on its back pays nothing,
-    and signed, so rocking back and forth nets nothing."""
+    """Rolling rate: the body's turning about the world y axis (the axle of a wheel
+    rolling along +x), clipped to +-max_rate and scaled to [-1, 1], while on edge.
+
+    World frame, not body: a body-frame spin rate also pays for spinning like a coin
+    with a wobbling axle (round 2300 of the first run did exactly that -- 1800 deg of
+    "spin" a episode, the wheel's orientation going back and forth, 0.1-0.7 m of
+    travel). Signed, so rocking nets nothing."""
     robot: Entity = env.scene[asset_cfg.name]
-    rate = (-robot.data.root_link_ang_vel_b[:, 2]).clamp(-max_rate, max_rate) / max_rate
+    rate = robot.data.root_link_ang_vel_w[:, 1].clamp(-max_rate, max_rate) / max_rate
     return rate * on_edge(env, sigma_sq, asset_cfg)
 
 
@@ -53,10 +57,17 @@ def straight(env, sigma_sq: float = 0.05, asset_cfg: SceneEntityCfg = _ROBOT) ->
     return torch.exp(-ax * ax / sigma_sq)
 
 
+def hub_too_low(env, min_height: float = 0.15, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """True when the hub drops below min_height: on its spokes it rides at 0.26-0.33 m;
+    lower means the legs have folded and it is tumbling on its knees."""
+    robot: Entity = env.scene[asset_cfg.name]
+    return robot.data.root_link_pos_w[:, 2] < min_height
+
+
 def fell_off_edge(env, max_tilt_cos: float = 0.7, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
     """True once the wheel has toppled: |gravity along the axle| > max_tilt_cos (~44 deg)."""
     robot: Entity = env.scene[asset_cfg.name]
     return robot.data.projected_gravity_b[:, 2].abs() > max_tilt_cos
 
 
-__all__ = ["fell_off_edge", "on_edge", "roll_forward", "straight", "travel_forward"]
+__all__ = ["fell_off_edge", "hub_too_low", "on_edge", "roll_forward", "straight", "travel_forward"]
