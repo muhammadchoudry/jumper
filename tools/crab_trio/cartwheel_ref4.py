@@ -6,7 +6,9 @@ height and tips onto its right edge in the air, snaps into the six-spoke star
 (~0.1 s, measured), and plants a single spoke (right middle leg) ~17 deg ahead
 of the hub -- a running jump onto one spoke. The hub then vaults over it like a
 pole vaulter, which turns the run-up's forward speed into wheel spin, and rolls
-on. The jump supplies the ~4-5 J of lift that, in reference 3, used up the
+on. It lands leaning -- the star tipped PHI_TD of the way to its edge, which
+sits the hub lower, nearer the height the jump reaches -- and stands up fully on
+edge over the first RISE degrees of the roll. The jump supplies the ~4-5 J of lift that, in reference 3, used up the
 run-up's momentum. Take-off speed 1.55 m/s up, as the robot's own recorded
 jump reaches.
 
@@ -53,7 +55,9 @@ T_TAKEOFF = 0.20
 VZ_TAKEOFF = 1.55     # m/s, the robot's recorded jump
 R_LAND = 0.27
 THETA_TD = -0.30     # rad: wheel angle at touchdown -- the landing spoke planted ~17 deg AHEAD of the hub
-R_SPOKE = 0.31       # m, hub height over a vertical spoke (vault radius)         # hub height landing on two spokes 30 deg either side of vertical
+R_SPOKE = 0.31       # m, hub height over a vertical spoke (vault radius)
+PHI_TD = 55.0        # deg: how far the star is tipped toward its edge at touchdown (90 = fully on edge)
+RISE = 150.0         # deg of wheel turn over which it stands up from PHI_TD to fully on edge         # hub height landing on two spokes 30 deg either side of vertical
 ROLL_RATE = 3.2       # rad/s, even rolling pace
 RAMP = 0.4            # s to go from the run-up's spin to ROLL_RATE
 T_DOWN, T_STAND = 0.5, 0.4
@@ -165,7 +169,7 @@ def build():
                 qj = crouch_v + mj((t_stage - 0.12) / 0.08) * (push_v - crouch_v)
             else:
                 qj = push_v + mj((t_stage - T_TAKEOFF) / 0.12) * (flat - push_v)
-            phi = math.radians(90) * mj(s)
+            phi = math.radians(PHI_TD) * mj(s)
             # in the air: tip onto the right edge and turn the wheel back a little so the
             # right-middle spoke reaches the floor ahead of the hub (a pole-vault plant)
             theta = THETA_TD * mj((t_stage - T_TAKEOFF) / (T_JUMP - T_TAKEOFF))
@@ -186,7 +190,10 @@ def build():
                 stage, t_stage = "roll", 0.0
                 continue
         elif stage == "roll":
-            qj, phi = flat, math.radians(90)
+            qj = flat
+            # lands leaning (wheel plane PHI_TD from flat), stands fully on edge while rolling
+            rise = mj((theta - THETA_TD) / math.radians(RISE))
+            phi = math.radians(PHI_TD + (90.0 - PHI_TD) * rise)
             wdot = w_run + (ROLL_RATE - w_run) * mj(t_stage / RAMP)
             slide = 0.0
             if theta >= 2 * math.pi:
