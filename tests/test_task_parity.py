@@ -56,6 +56,7 @@ NOT_LOCOMOTION = {
     # no gait prior, 22 joints, and the robot on its edge or upside down on purpose.
     "jumper.cartwheel",
     "jumper.cartwheel_flat",
+    "jumper.cartwheel_full",
     "jumper.cartwheel_jump",
     "jumper.cartwheel_roll",
     "jumper.cartwheel_runup",

@@ -58,6 +58,7 @@ from .jumper import cartwheel_flat  # noqa: F401,E402
 from .jumper import cartwheel_runup  # noqa: F401,E402
 from .jumper import cartwheel_jump  # noqa: F401,E402
 from .jumper import cartwheel_roll  # noqa: F401,E402
+from .jumper import cartwheel_full  # noqa: F401,E402
 from .jumper import dance  # noqa: F401,E402
 from .jumper import dance_brazilian  # noqa: F401,E402
 from .jumper import dance_dream_wings  # noqa: F401,E402
