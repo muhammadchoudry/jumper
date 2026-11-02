@@ -17,7 +17,7 @@ Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tools are in
 | sideways jump onto one leg, leaning landing | reference only (`cartwheel_ref4.py`, kinematic); not yet trained |
 | **rolling on edge** | **done, in physics**: `jumper.cartwheel_roll`, 15–16 of 16 attempts roll 7–9 turns and 3.5–7.5 m in 5 s |
 | tip back down and stand | not yet trained |
-| whole move in one policy | next: `jumper.cartwheel_full` |
+| whole move in one policy | training: `jumper.cartwheel_full`, Mac mini, started Nov 2 14:58, 4000 rounds (~5.5 h), warm-started from the rolling policy |
 
 The rolling policy is kept in the repo at
 `tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt` (`*.pt` is
@@ -117,12 +117,28 @@ MUJOCO_GL=egl python tools/crab_trio/traj_video.py /root/scratch/roll_traj.npz r
 Regenerate the references: `cd tools/crab_trio && python cartwheel_ref4.py`
 (likewise `roll_loop_ref.py`, `record_runup.py`).
 
-## Next
+## In progress: `jumper.cartwheel_full`
 
-1. **`jumper.cartwheel_full`**: one policy on reference 4's timeline. Track the
-   reference through the run-up and jump; free rolling rewards (as
-   `cartwheel_roll`) on edge; then stand-up rewards (upright, home pose, settle).
-   Warm-started from the rolling policy.
+One policy on reference 4's timeline (`tasks/jumper/cartwheel_full/`), each reward
+and termination gated to its phase (`full_mdp.py`):
+
+- **A** (stand, run-up, jump, landing, to 0.15 s into the roll): the jump task's
+  imitation terms, full-rotation tracking, divergence terminations.
+- **B** (roll, 2.55–4.51 s after go): `cartwheel_roll`'s rolling rewards; ends if
+  it topples off its edge (after 0.4 s to stand up from the leaning landing) or the
+  hub drops below 0.15 m.
+- **C** (tip-down and stand, to the end of a 6.4 s episode): stand pose, height and
+  gravity direction tracked, plus upright and settle.
+
+Started from the rolling policy with `--checkpoint
+tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt`; the iteration
+count continues from 3999. On the Mac mini, run with
+`~/Projects/jumper-cartwheel-full.command`. Evaluate from a standing start with
+`python tools/crab_trio/full_eval.py <model_N.pt>`: per env, how far through the
+timeline it got, turns while rolling, and whether it ends upright.
+
+## Next
+1. Evaluate `jumper.cartwheel_full`; fix any loopholes the phase gating opens.
 2. Optional looks pass: reward straighter, more spread legs, closer to the star
    pictured originally.
 3. Parked: folded-leg rolling (`NOTES_folded_leg_rolling.md`).
