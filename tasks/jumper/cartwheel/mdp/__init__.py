@@ -2,6 +2,6 @@
 spin-preserving reset and an orientation-divergence termination."""
 
 from ...jump.mdp import actions, commands, observations, reference, rewards
-from . import events, terminations
+from . import cw_rewards, events, terminations
 
-__all__ = ["actions", "commands", "events", "observations", "reference", "rewards", "terminations"]
+__all__ = ["actions", "commands", "cw_rewards", "events", "observations", "reference", "rewards", "terminations"]

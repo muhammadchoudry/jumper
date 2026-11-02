@@ -30,4 +30,31 @@ def orientation_diverged(
     return torch.acos(cos) > max_angle
 
 
-__all__ = ["orientation_diverged"]
+
+
+def _quat_error_angle(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """Smallest rotation angle (rad) between two batches of unit quaternions (w, x, y, z)."""
+    dot = (q1 * q2).sum(dim=1).abs().clamp(max=1.0)
+    return 2.0 * torch.acos(dot)
+
+
+def rotation_diverged(
+    env,
+    command_name: str = "jump",
+    max_angle: float = 1.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """True when the body's full orientation strays from the reference's.
+
+    `orientation_diverged` compares only the gravity direction, which cannot see
+    a rotation about the vertical: a policy lying ~70 degrees off its edge passed
+    it for the whole roll while the reference turned 360 degrees (seen in
+    jumper.cartwheel_runup, round 1700). The full rotation error catches that.
+    The heading is part of the reference (it runs straight along +x).
+    """
+    _, ref, _, _ = ref_state(env, command_name)
+    robot: Entity = env.scene[asset_cfg.name]
+    return _quat_error_angle(robot.data.root_link_quat_w, ref["base_quat"]) > max_angle
+
+
+__all__ = ["orientation_diverged", "rotation_diverged"]
