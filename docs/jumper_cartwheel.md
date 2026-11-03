@@ -9,15 +9,15 @@ Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tools are in
 `tools/crab_trio/`, tasks in `tasks/jumper/cartwheel*`, videos in
 `docs/media/cartwheel/`.
 
-## Status (Nov 2, 2026)
+## Status (Nov 2, 2026, evening)
 
 | piece | status |
 |---|---|
 | run-up (trot) | done: a physics recording of the trained `jumper.posture` walk (`record_runup.py`) |
-| sideways jump onto one leg, leaning landing | reference only (`cartwheel_ref4.py`, kinematic); not yet trained |
+| sideways jump onto one leg, leaning landing | trained inside `jumper.cartwheel_full`; the main point of failure (below) |
 | **rolling on edge** | **done, in physics**: `jumper.cartwheel_roll`, 15–16 of 16 attempts roll 7–9 turns and 3.5–7.5 m in 5 s |
-| tip back down and stand | not yet trained |
-| whole move in one policy | training: `jumper.cartwheel_full`, Mac mini, started Nov 2 14:58, 4000 rounds (~5.5 h), warm-started from the rolling policy |
+| tip back down and stand | trained inside `jumper.cartwheel_full`; works when the roll gets there |
+| **whole move in one policy** | **first full cartwheels, in physics**: `jumper.cartwheel_full` round 8899, 2 of 16 from a standing start (6 of 16 in a second sample ran to the end); see below |
 
 The rolling policy is kept in the repo at
 `tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt` (`*.pt` is
@@ -137,8 +137,39 @@ count continues from 3999. On the Mac mini, run with
 `python tools/crab_trio/full_eval.py <model_N.pt>`: per env, how far through the
 timeline it got, turns while rolling, and whether it ends upright.
 
+### Results: `jumper.cartwheel_full`
+
+**Run 1** (started from the rolling policy, one residual scale of 0.7 rad
+everywhere): stuck. 0/16 got past the first second of the trot. The rolling
+policy's raw outputs are several times the unit range, so they threw the joints
+more than 6 rad² off the reference. With zero action, the reference tracks to
+about 0.1 rad².
+
+**Run 2** (commit 3db68a2, resumed from run 1 round 4900): outside the roll the
+residual is the raw output capped at ±1 times 0.4 rad; the roll keeps 0.7 rad.
+4000 rounds, about 4.6 h on the Mac mini.
+
+Final check, round 8899 (`full_eval.py`, 16 attempts from a standing start):
+- **2/16 complete the whole move**: rolled 2.9–3.0 turns, 2.2–2.8 m, ran to the
+  end, upright and still.
+- 13/16 got through the run-up and jump and into the roll, then ended with
+  `rotation_diverged` just after landing. The full-rotation check still applies
+  for the first 0.15 s of the roll (the end of phase A), and the leaning landing
+  strays more than 1 rad from the reference's.
+- 1/16 hub_too_low in the roll after about a turn.
+
+A recorded run (`full_record.py`, best of 16; 6/16 ran to the end in that
+sample): trot 1.7 m, jump at 1.9 s tipping 90° onto its edge with the hub up to
+0.23 m, about 3.5 turns (1260°) over 3 m, tips down at 4.5 s, standing still by
+4.9 s. Video: `docs/media/cartwheel/cartwheel_full_round8899.mp4`. Checkpoint:
+`tasks/jumper/cartwheel_full/checkpoints/full_v2_model_8899.pt`.
+
+Likely next fixes: end phase A at the landing itself (no full-rotation check once
+it's down), or loosen that check across the jump and landing; start more practice
+attempts at the jump; then train longer.
+
 ## Next
-1. Evaluate `jumper.cartwheel_full`; fix any loopholes the phase gating opens.
+1. Make the landing reliable (13/16 fail there): end the full-rotation check at touch-down or loosen it over the jump, start more practice attempts at the jump, train longer.
 2. Optional looks pass: reward straighter, more spread legs, closer to the star
    pictured originally.
 3. Parked: folded-leg rolling (`NOTES_folded_leg_rolling.md`).

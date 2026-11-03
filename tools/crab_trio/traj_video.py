@@ -20,12 +20,13 @@ qa = [m.jnt_qposadr[m.joint(str(n)).id] for n in D["names"]]
 r = mujoco.Renderer(m, 480, 854); cam = mujoco.MjvCamera(); opt = mujoco.MjvOption()
 wr = imageio.get_writer(out, fps=30, codec="libx264", quality=7, macro_block_size=8, pixelformat="yuv420p")
 dt = float(D["dt"]); step = max(1, int(round(1 / 30 / dt))); frames = []
+idx = list(range(0, len(D["qs"]), step)); picks = set(idx[int(i * (len(idx) - 1) / 7)] for i in range(8))
 for k in range(0, len(D["qs"]), step):
     q = D["qs"][k]; d.qpos[:] = 0; d.qpos[0:3] = q[0:3]; d.qpos[3:7] = q[3:7]; d.qpos[qa] = q[7:]
     mujoco.mj_forward(m, d)
     cam.lookat[:] = [q[0], q[1], 0.15]; cam.distance = 1.4; cam.azimuth = 110; cam.elevation = -12
     r.update_scene(d, cam, opt); img = r.render(); wr.append_data(img)
-    if len(frames) < 8 and k % (step * 8) == 0: frames.append(img.copy())
+    if k in picks: frames.append(img.copy())
 wr.close()
 imageio.imwrite(out.replace(".mp4", "_sheet.png"), np.vstack([np.hstack(frames[:4]), np.hstack(frames[4:8])]))
 print("ok", out)
