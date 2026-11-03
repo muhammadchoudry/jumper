@@ -2,6 +2,7 @@
 on a checker floor.
 
   MUJOCO_GL=egl python tools/crab_trio/traj_video.py roll_traj.npz out.mp4
+  TOPVIEW=1 ...                                   # a high fixed view over the whole path
 """
 import sys
 import numpy as np
@@ -20,11 +21,18 @@ qa = [m.jnt_qposadr[m.joint(str(n)).id] for n in D["names"]]
 r = mujoco.Renderer(m, 480, 854); cam = mujoco.MjvCamera(); opt = mujoco.MjvOption()
 wr = imageio.get_writer(out, fps=30, codec="libx264", quality=7, macro_block_size=8, pixelformat="yuv420p")
 dt = float(D["dt"]); step = max(1, int(round(1 / 30 / dt))); frames = []
+import os
+TOP = os.environ.get("TOPVIEW") == "1"
+cx, cy = (D["qs"][:, 0].min() + D["qs"][:, 0].max()) / 2, (D["qs"][:, 1].min() + D["qs"][:, 1].max()) / 2
+TOP_DIST = 1.6 * max(np.ptp(D["qs"][:, 0]), np.ptp(D["qs"][:, 1]), 1.5) + 0.8
 idx = list(range(0, len(D["qs"]), step)); picks = set(idx[int(i * (len(idx) - 1) / 7)] for i in range(8))
 for k in range(0, len(D["qs"]), step):
     q = D["qs"][k]; d.qpos[:] = 0; d.qpos[0:3] = q[0:3]; d.qpos[3:7] = q[3:7]; d.qpos[qa] = q[7:]
     mujoco.mj_forward(m, d)
-    cam.lookat[:] = [q[0], q[1], 0.15]; cam.distance = 1.4; cam.azimuth = 110; cam.elevation = -12
+    if TOP:                                   # high, fixed view over the whole path
+        cam.lookat[:] = [cx, cy, 0.0]; cam.distance = TOP_DIST; cam.azimuth = 90; cam.elevation = -65
+    else:
+        cam.lookat[:] = [q[0], q[1], 0.15]; cam.distance = 1.4; cam.azimuth = 110; cam.elevation = -12
     r.update_scene(d, cam, opt); img = r.render(); wr.append_data(img)
     if k in picks: frames.append(img.copy())
 wr.close()

@@ -203,9 +203,19 @@ tan(lean) = v · yaw rate / g, the way a rolling coin leans into a turn
   `jumper.cartwheel_ten`, 6/8 then 4/4 full cartwheels, **10.2–11 turns over
   9.2–10 m**, ending upright. Video:
   `docs/media/cartwheel/cartwheel_ten_turns_straight.mp4` (11 turns, 10.2 m).
-- **Figure 8: training.** Run 3's policy just rolls straight there (it has never
-  steered). Training `jumper.cartwheel_eight` from it on the Mac mini, 3000 rounds
-  from 09:05 Nov 3 (~6.7 h; episodes are 9.8 s).
+- **Figure 8, try 1** (two tangent circles, 3000 rounds from run 3's policy,
+  checkpoint `tasks/jumper/cartwheel_eight/checkpoints/eight_v1_model_15897.pt`):
+  **it steers but never switches loops.** 10/16 rolled 4.7–5.7 turns while curving
+  left 270–640°, then fell (hub too low) about where the path switches from the
+  left loop to the right; 6/16 drifted off heading in the trot (a regression). The
+  best attempt rolls one left loop, wider than the reference, then falls back
+  inside it: `cartwheel_eight_attempt1_top.mp4`, `cartwheel_eight_attempt1_path.png`.
+  Between tangent circles the lean has to flip from left to right in ~0.4 s.
+- **Figure 8, try 2:** a gentler 8, two round loops joined by straight diagonals
+  that cross in the middle (constant lean around each loop, upright on the
+  diagonals; at most ~14° of lean at 1.1 m/s), a longer roll (5.5 reference turns,
+  7.5 s; 11.8 s episodes), and 25% of practice starts between 30% and 70% of the
+  roll (around the crossing), 20% at the jump. Continuing from try 1's policy.
 
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works

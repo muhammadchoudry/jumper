@@ -70,10 +70,13 @@ def gated_window(env, fn, start: str | None = None, end: str | None = None, **pa
 
 
 def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_fraction: float = 0.35,
-                phase_range: tuple[float, float] = (0.0, 0.95), **kw) -> None:
+                phase_range: tuple[float, float] = (0.0, 0.95),
+                roll_window: tuple[float, float] | None = None, roll_fraction: float = 0.0, **kw) -> None:
     """Reference-state spawn with a share of envs placed around the jump and landing:
     `focus_fraction` of them start between `focus_s[0]` s before the jump and
-    `focus_s[1]` s after touch-down, the rest anywhere in `phase_range`."""
+    `focus_s[1]` s after touch-down, `roll_fraction` (if `roll_window` is given) between
+    those fractions of the roll segment (e.g. a figure 8's crossing), the rest
+    anywhere in `phase_range`."""
     from ..cartwheel.mdp.events import reset_from_reference_phase
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.int)
@@ -81,11 +84,21 @@ def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_
     seg = ref.meta["segments_s_after_go"]
     lo = max(0.0, (float(seg["jump"][0]) + focus_s[0]) / ref.span)
     hi = min(0.99, (float(seg["roll"][0]) + focus_s[1]) / ref.span)
-    pick = torch.rand(len(env_ids), device=env.device) < focus_fraction
+    u = torch.rand(len(env_ids), device=env.device)
+    pick = u < focus_fraction
     if pick.any():
         reset_from_reference_phase(env, env_ids[pick], phase_range=(lo, hi), **kw)
-    if (~pick).any():
-        reset_from_reference_phase(env, env_ids[~pick], phase_range=phase_range, **kw)
+    rest = ~pick
+    if roll_window is not None and roll_fraction > 0:
+        r0, r1 = float(seg["roll"][0]), float(seg["roll"][1])
+        a = (r0 + roll_window[0] * (r1 - r0)) / ref.span
+        b = (r0 + roll_window[1] * (r1 - r0)) / ref.span
+        mid = (u >= focus_fraction) & (u < focus_fraction + roll_fraction)
+        if mid.any():
+            reset_from_reference_phase(env, env_ids[mid], phase_range=(a, b), **kw)
+        rest = rest & ~mid
+    if rest.any():
+        reset_from_reference_phase(env, env_ids[rest], phase_range=phase_range, **kw)
 
 
 def settle(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:

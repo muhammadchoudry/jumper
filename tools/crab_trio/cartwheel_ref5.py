@@ -5,9 +5,12 @@ rigid star at ROLL_RATE (the policy rolls at its own pace; the roll segment's le
 is what matters, ~5.5 s, about what 10 turns take it), then tip down and stand.
 
   straight   heading fixed
-  eight      heading 0 -> 2 pi over the first half of the roll's turns (a loop to the
-             left), then back 2 pi -> 0 (a loop to the right), eased through the
-             crossover: a figure 8 that ends heading the way it started
+  eight      EIGHT_TURNS turns (a longer roll): two round loops, one left and one
+             right, joined by straight diagonals that cross in the middle -- constant
+             lean around each loop, upright on the diagonals, so the lean changes
+             sides with time to stand up in between. (The first version was two
+             tangent circles: the lean had to flip from left to right in ~0.4 s, and
+             the trained policy rolled the left loop and fell at the switch.)
 
   python cartwheel_ref5.py   # writes tasks/jumper/cartwheel_ten/ref/cartwheel_ten.npz
                              #    and tasks/jumper/cartwheel_eight/ref/cartwheel_eight.npz
@@ -36,12 +39,58 @@ def eight(s: float) -> float:
     return up + mj(a) * (down - up)
 
 
+EIGHT_TURNS = 5.5     # a longer roll for the figure 8: bigger loops, less lean
+BETA = math.radians(30)   # the crossing diagonals are 2*BETA apart
+
+
+def _eight_profile(n: int = 4000):
+    """Heading vs fraction of the path for a figure 8 of two round loops joined by
+    straight diagonals that cross in the middle: half a diagonal, loop left by
+    pi + 2 BETA, the other diagonal through the crossing, loop right by pi + 2 BETA,
+    half a diagonal back to the crossing. Curvature is constant on the loops (constant
+    lean) and zero on the diagonals (stand up before leaning the other way), eased
+    over a short stretch at each change."""
+    import numpy as np
+    R = 1.0
+    d = R / math.sin(BETA)
+    half = math.sqrt(d * d - R * R)                  # crossing to a tangent point
+    arc = R * (math.pi + 2 * BETA)
+    parts = [(half, 0), (arc, 1), (2 * half, 0), (arc, -1), (half, 0)]
+    total = sum(p[0] for p in parts)
+    s = (np.arange(n) + 0.5) / n
+    edges = np.cumsum([0] + [p[0] / total for p in parts])
+    rate = np.zeros(n)
+    e = 0.02
+    for (length, sign), a, b in zip(parts, edges[:-1], edges[1:]):
+        if sign:
+            ramp = np.minimum(np.clip((s - a) / e, 0, 1), np.clip((b - s) / e, 0, 1))
+            ramp = ramp * ramp * ramp * (10 - 15 * ramp + 6 * ramp * ramp)
+            seg = np.where((s >= a) & (s < b), ramp, 0.0)
+            seg *= (math.pi + 2 * BETA) / (seg.sum() / n)
+            rate += sign * seg
+    psi = np.concatenate([[0.0], np.cumsum(rate) / n])
+    return np.linspace(0, 1, n + 1), psi
+
+
+_EIGHT = None
+
+
+def eight3(s: float) -> float:
+    """figure 8: two round loops, straight diagonals crossing in the middle"""
+    import numpy as np
+    global _EIGHT
+    if _EIGHT is None:
+        _EIGHT = _eight_profile()
+    return float(np.interp(s, *_EIGHT))
+
+
 def main():
     R4.TURNS, R4.ROLL_RATE = TURNS, ROLL_RATE
     R4.HEADING_FN = None
     R4.OUT = R4.ROOT / "tasks/jumper/cartwheel_ten/ref/cartwheel_ten.npz"
     R4.build()
-    R4.HEADING_FN = eight
+    R4.TURNS = EIGHT_TURNS
+    R4.HEADING_FN = eight3
     R4.OUT = R4.ROOT / "tasks/jumper/cartwheel_eight/ref/cartwheel_eight.npz"
     R4.build()
 
