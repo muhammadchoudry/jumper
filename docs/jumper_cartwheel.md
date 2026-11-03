@@ -9,7 +9,7 @@ Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tools are in
 `tools/crab_trio/`, tasks in `tasks/jumper/cartwheel*`, videos in
 `docs/media/cartwheel/`.
 
-## Status (Nov 2, 2026, evening)
+## Status (Nov 3, 2026, morning)
 
 | piece | status |
 |---|---|
@@ -17,7 +17,7 @@ Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tools are in
 | sideways jump onto one leg, leaning landing | trained inside `jumper.cartwheel_full`; the main point of failure (below) |
 | **rolling on edge** | **done, in physics**: `jumper.cartwheel_roll`, 15–16 of 16 attempts roll 7–9 turns and 3.5–7.5 m in 5 s |
 | tip back down and stand | trained inside `jumper.cartwheel_full`; works when the roll gets there |
-| **whole move in one policy** | **first full cartwheels, in physics**: `jumper.cartwheel_full` round 8899, 2 of 16 from a standing start (6 of 16 in a second sample ran to the end); see below |
+| **whole move in one policy** | **12/16 full cartwheels from a standing start** (`jumper.cartwheel_full` run 3, round 12898; 15/16 run to the end, 3 of those land on their back) |
 
 The rolling policy is kept in the repo at
 `tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt` (`*.pt` is
@@ -168,8 +168,30 @@ Likely next fixes: end phase A at the landing itself (no full-rotation check onc
 it's down), or loosen that check across the jump and landing; start more practice
 attempts at the jump; then train longer.
 
+**Run 3** (commit 31747c7, resumed from run 2 round 8899, 4000 rounds, about 4.7 h):
+- Terminations: the full-rotation and gravity checks (1 rad) during the run-up
+  only; a looser full-rotation check (1.6 rad) during the jump; none after
+  touch-down. The hub-height check waits 0.4 s after landing. On run 2's
+  weights these rules alone gave **9/16** (from 2/16): the 1 rad check right
+  after the leaning landing had been killing attempts that could roll on.
+- 35% of practice starts around the jump and landing (`reset_focus`).
+- Spread legs while rolling: `star_pose` weight 0.3 → 1.5, kernel 1.0 → 0.15 rad²
+  (mean square), so about 0.15 rad of pumping stays cheap.
+
+Results (`full_eval.py`, 16 from standing): round 9900 13/16; **final round
+12898: 12/16 full cartwheels** — trot, jump, **3.5–3.9 turns** over 1.6–3.1 m,
+upright and still at the end. 15/16 ran to the end; 3 of those finished on their
+back, and 1 drifted off heading in the run-up. **Leg spread while rolling: 0.28 m
+in every attempt** (run 2: 0.23–0.27 m; the straight star ~0.30 m), so the legs
+are more spread but still a little bent. Rolling did not suffer: 3.5–3.9 turns vs
+run 2's ~3. Video (a run that ends on its feet):
+`docs/media/cartwheel/cartwheel_full_v3_round12898.mp4`. Checkpoint:
+`tasks/jumper/cartwheel_full/checkpoints/full_v3_model_12898.pt`.
+
 ## Next
-1. Make the landing reliable (13/16 fail there): end the full-rotation check at touch-down or loosen it over the jump, start more practice attempts at the jump, train longer.
-2. Optional looks pass: reward straighter, more spread legs, closer to the star
+1. The finish: 3/16 end on their back. Reward the tip-down direction (feet-first), or end attempts that land upside down.
+2. Legs: 0.28 m vs the star's 0.30 m. Another run with `star_pose` raised (e.g. weight 3) if the look matters more than reliability.
+3. Make the competition video: Neon Reef skin and stage, music.
+4. Optional looks pass: reward straighter, more spread legs, closer to the star
    pictured originally.
-3. Parked: folded-leg rolling (`NOTES_folded_leg_rolling.md`).
+5. Parked: folded-leg rolling (`NOTES_folded_leg_rolling.md`).
