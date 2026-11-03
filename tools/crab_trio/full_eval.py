@@ -55,6 +55,11 @@ TIPS = ("LF_finger_tip_link", "RF_finger_tip_link", "LM_foot_tip_link", "RM_foot
         "LR_foot_tip_link", "RR_foot_tip_link")
 tip_ids = [robot.body_names.index(b) for b in TIPS]
 spread_sum = torch.zeros(N)
+path_len = torch.zeros(N)
+last_xy = robot.data.root_link_pos_w[:, :2].clone()
+last_yaw = torch.zeros(N)
+net_yaw = torch.zeros(N)
+abs_yaw = torch.zeros(N)
 spread_n = torch.zeros(N)
 last_t = torch.zeros(N)
 why = [""] * N
@@ -72,9 +77,10 @@ for k in range(int(env.max_episode_length) - 2):
     bx = torch.stack([1 - 2 * (y_ * y_ + z_ * z_), 2 * (x_ * y_ + w_ * z_), 2 * (x_ * z_ - w_ * y_)], 1)
     ang = torch.atan2(-bx[:, 2], bx[:, 0])
     rolling = alive & (tsg >= b0) & (tsg < b1)
-    if prev is not None:
-        dd = (ang - prev + math.pi) % (2 * math.pi) - math.pi
-        wheel += torch.where(rolling, dd, torch.zeros_like(dd))
+    # turns about the robot's own axle (works on a curving path too)
+    axle = torch.stack([2 * (x_ * z_ + w_ * y_), 2 * (y_ * z_ - w_ * x_), 1 - 2 * (x_ * x_ + y_ * y_)], 1)
+    spin = -(robot.data.root_link_ang_vel_w * axle).sum(dim=1) * env.step_dt
+    wheel += torch.where(rolling, spin, torch.zeros_like(spin))
     prev = ang
     # leg spread: mean distance of the six tips from the hub, while rolling
     d = (robot.data.body_link_pos_w[:, tip_ids] - robot.data.root_link_pos_w[:, None]).norm(dim=2).mean(dim=1)
@@ -83,6 +89,17 @@ for k in range(int(env.max_episode_length) - 2):
     px = robot.data.root_link_pos_w[:, 0]
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
+    pxy = robot.data.root_link_pos_w[:, :2]
+    if k > 0:
+        path_len += torch.where(rolling, (pxy - last_xy).norm(dim=1), torch.zeros(N))
+        yaw = torch.atan2(-axle[:, 0], axle[:, 1])          # travel direction = up x axle
+        dyaw = (yaw - last_yaw + math.pi) % (2 * math.pi) - math.pi
+        net_yaw += torch.where(rolling, dyaw, torch.zeros(N))
+        abs_yaw += torch.where(rolling, dyaw.abs(), torch.zeros(N))
+        last_yaw = yaw
+    else:
+        last_yaw = torch.atan2(-axle[:, 0], axle[:, 1])
+    last_xy = pxy.clone()
     last_t = torch.where(alive, tsg, last_t)
     tm = env.termination_manager
     for i in dones.nonzero().flatten().tolist():
@@ -103,17 +120,18 @@ def stage(t):
 
 
 print(f"roll segment {b0:.2f}-{b1:.2f}s after go")
-print("env: got to | wheel turns while rolling | travel while rolling | leg spread while rolling (star 0.30 m) | ends upright | final speed | why it ended")
+print("env: got to | wheel turns while rolling | path length while rolling | heading change (total, net) | leg spread while rolling (star 0.30 m) | ends upright | final speed | why it ended")
 full = 0
 for i in range(N):
     up = float(g_end[i]) < -0.9
     done_ok = alive[i] or why[i] == "time_out"
     turns = abs(float(wheel[i])) / 360 * 180 / math.pi
-    trav = float(x_roll1[i] - x_roll0[i]) if not math.isnan(float(x_roll0[i])) else 0.0
+    trav = float(path_len[i])
     if done_ok and up and turns >= 0.9:
         full += 1
     spread = float(spread_sum[i] / spread_n[i]) if spread_n[i] > 0 else float("nan")
-    print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:+5.2f} m  spread {spread:.2f} m  "
+    print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:5.2f} m path  "
+          f"turned {math.degrees(float(abs_yaw[i])):4.0f} deg (net {math.degrees(float(net_yaw[i])):+4.0f})  spread {spread:.2f} m  "
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")

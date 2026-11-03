@@ -188,6 +188,29 @@ run 2's ~3. Video (a run that ends on its feet):
 `docs/media/cartwheel/cartwheel_full_v3_round12898.mp4`. Checkpoint:
 `tasks/jumper/cartwheel_full/checkpoints/full_v3_model_12898.pt`.
 
+### Ten turns, and a figure 8 (reference 5)
+
+`cartwheel_ref5.py` makes reference 4 with a ~5.5 s roll (about 10 turns at the
+policy's pace) in two versions: **straight** (`jumper.cartwheel_ten`) and a
+**figure 8** (`jumper.cartwheel_eight`: heading 0 → 2π over the first half of the
+roll, a loop to the left, then back to 0, a loop to the right; loops ~1.1 m
+across in the reference). The figure-8 task scores the roll against the
+reference's heading at each moment, and its lean against what the turn needs:
+tan(lean) = v · yaw rate / g, the way a rolling coin leans into a turn
+(`full_mdp.py` `steer_*`).
+
+- **Straight, 10+ turns: run 3's policy does it with no extra training.** On
+  `jumper.cartwheel_ten`, 6/8 then 4/4 full cartwheels, **10.2–11 turns over
+  9.2–10 m**, ending upright. Video:
+  `docs/media/cartwheel/cartwheel_ten_turns_straight.mp4` (11 turns, 10.2 m).
+- **Figure 8: training.** Run 3's policy just rolls straight there (it has never
+  steered). Training `jumper.cartwheel_eight` from it on the Mac mini, 3000 rounds
+  from 09:05 Nov 3 (~6.7 h; episodes are 9.8 s).
+
+`full_eval.py` now takes the task as a third argument and reports turns about the
+robot's own axle, path length, and heading change (total and net), so it works
+on a curving path.
+
 ## Next
 1. The finish: 3/16 end on their back. Reward the tip-down direction (feet-first), or end attempts that land upside down.
 2. Legs: 0.28 m vs the star's 0.30 m. Another run with `star_pose` raised (e.g. weight 3) if the look matters more than reliability.
