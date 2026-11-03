@@ -2,7 +2,7 @@
 (an env that ran to the end and finished on its feet; otherwise the one that survived longest) as an npz for
 traj_video.py.
 
-  python tools/crab_trio/full_record.py <model_N.pt> out.npz [num_envs] [seed]
+  python tools/crab_trio/full_record.py <model_N.pt> out.npz [num_envs] [seed] [task]
 """
 import sys
 from dataclasses import asdict
@@ -17,13 +17,14 @@ import tasks
 ckpt, out = sys.argv[1], sys.argv[2]
 N = int(sys.argv[3]) if len(sys.argv) > 3 else 16
 torch.manual_seed(int(sys.argv[4]) if len(sys.argv) > 4 else 0)
+TASK = sys.argv[5] if len(sys.argv) > 5 else "jumper.cartwheel_full"
 res = resolve(backend="native", device="cpu", num_envs=N, cpu_threads=2, strip_visual=None, training=False)
 use_backend(res)
 from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 from mjlab.rl import RslRlVecEnvWrapper  # noqa: E402
 from mjlab.rl.runner import MjlabOnPolicyRunner  # noqa: E402
 
-spec = tasks.get("jumper.cartwheel_full")
+spec = tasks.get(TASK)
 cfg = tasks.load_env_cfg(spec.id, asset=spec.resolve_asset(None), play=False)
 cfg.scene.num_envs = N
 cfg.observations["actor"].enable_corruption = False

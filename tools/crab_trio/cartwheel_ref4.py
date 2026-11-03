@@ -61,6 +61,11 @@ RISE = 150.0         # deg of wheel turn over which it stands up from PHI_TD to 
 ROLL_RATE = 3.2       # rad/s, even rolling pace
 RAMP = 0.4            # s to go from the run-up's spin to ROLL_RATE
 T_DOWN, T_STAND = 0.5, 0.4
+TURNS = 1.0           # full turns of the wheel in the roll segment (cartwheel_ref5.py sets more)
+#: optional heading profile for the roll: psi(s) in rad, s = 0..1 through the roll's
+#: turns; the whole motion is yawed by psi about the hub from the roll on (a figure 8:
+#: 0 -> 2 pi -> 0). None = straight.
+HEADING_FN = None
 
 
 def quat_conj(q):
@@ -160,6 +165,7 @@ def build():
     crouch_v, push_v = np.clip(crouch_v, lo, hi), np.clip(push_v, lo, hi)
     z_take = None
     BPz_prev = 0.0
+    thetas = []
     while stage != "done":
         if stage == "jump":
             s = t_stage / T_JUMP
@@ -196,8 +202,8 @@ def build():
             phi = math.radians(PHI_TD + (90.0 - PHI_TD) * rise)
             wdot = w_run + (ROLL_RATE - w_run) * mj(t_stage / RAMP)
             slide = 0.0
-            if theta >= 2 * math.pi:
-                theta = 2 * math.pi
+            if theta >= 2 * math.pi * TURNS:
+                theta = 2 * math.pi * TURNS
                 stage, t_stage = "tip-down", 0.0
                 continue
         elif stage == "tip-down":
@@ -213,7 +219,7 @@ def build():
                 stage = "done"
                 continue
         if stage != "jump":
-            theta = min(theta + wdot * dt, 2 * math.pi)
+            theta = min(theta + wdot * dt, 2 * math.pi * TURNS)
         quat = quat_mul(heading, quat_mul([math.cos(phi / 2), math.sin(phi / 2), 0, 0],
                                           [math.cos(theta / 2), 0, 0, -math.sin(theta / 2)]))  # rolls forward
         qj = np.clip(qj, lo, hi)
@@ -240,6 +246,7 @@ def build():
             chassis_touch += 1
         place(qj, quat, x, y, z)
         frames.append((qj, d.xpos[base].copy(), np.array(quat), stage))
+        thetas.append(theta)
         t += dt
         t_stage += dt
 
@@ -249,6 +256,19 @@ def build():
     BP = np.array([f[1] for f in frames])
     BQ = np.array([f[2] for f in frames])
     labels = [f[3] for f in frames]
+    if HEADING_FN is not None:              # yaw the motion about the hub from the roll on
+        i_r = labels.index("roll")
+        th = np.concatenate([np.zeros(i_r), np.array(thetas)])[:n]
+        span = 2 * math.pi * TURNS - THETA_TD
+        psi = np.array([HEADING_FN(min(max((th[i] - THETA_TD) / span, 0.0), 1.0)) if i >= i_r else 0.0
+                        for i in range(n)])
+        BP2 = BP.copy()
+        for i in range(i_r, n):
+            c, s_ = math.cos(psi[i]), math.sin(psi[i])
+            dxy = BP[i, :2] - BP[i - 1, :2]
+            BP2[i, :2] = BP2[i - 1, :2] + [c * dxy[0] - s_ * dxy[1], s_ * dxy[0] + c * dxy[1]]
+            BQ[i] = quat_mul([math.cos(psi[i] / 2), 0, 0, math.sin(psi[i] / 2)], BQ[i])
+        BP = BP2
     # smooth the hand-off from the recorded run-up into the kinematic part (base height)
     i0 = labels.index("jump")
     blend = int(0.15 * REC_HZ)
@@ -287,9 +307,11 @@ def build():
         t_go=T_GO, go_frame=int(round(T_GO * REC_HZ)), stand_base_z=float(BP[0, 2]),
         kp=20.0, kd=0.5, tau_limit=1.7464, kinematic="run-up recorded, rest kinematic",
         segments_s_after_go={k: [round(a, 3), round(b, 3)] for k, (a, b) in seg.items()},
-        stats=dict(runup_speed=v_run, roll_rate=ROLL_RATE,
+        stats=dict(runup_speed=v_run, roll_rate=ROLL_RATE, turns=TURNS,
+                   heading=None if HEADING_FN is None else getattr(HEADING_FN, "__doc__", "custom"),
                    rim_speed_while_rolling=float(np.linalg.norm(LV[roll_mask, :2], axis=1).mean()),
                    total_travel=float(BP[-1, 0] - BP[0, 0]),
+                   path_length=float(np.linalg.norm(np.diff(BP[:, :2], axis=0), axis=1).sum()),
                    base_z_range_while_rolling=[float(BP[roll_mask, 2].min()), float(BP[roll_mask, 2].max())],
                    chassis_on_floor_s=chassis_touch / REC_HZ, duration=float(tt[-1])),
     )

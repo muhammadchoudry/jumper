@@ -102,4 +102,80 @@ def upright(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> t
     return torch.exp(-e / sigma_sq)
 
 
-__all__ = ["gated", "gated_done", "gated_window", "phase_mask", "reset_focus", "settle", "upright"]
+
+
+
+# ── Steering-aware rolling (jumper.cartwheel_ten / jumper.cartwheel_eight) ─────────────
+# The reference's heading may turn (a figure 8). These score the roll against the
+# reference's own heading at this moment instead of world +x:
+#   axle_ref  the reference body's z axis (the wheel axle), flattened to horizontal
+#   travel    up x axle: the direction a wheel with that axle rolls forward
+
+
+def _axle(q: torch.Tensor) -> torch.Tensor:
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    return torch.stack([2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)], dim=1)
+
+
+def _flat(a: torch.Tensor) -> torch.Tensor:
+    h = a.clone()
+    h[:, 2] = 0.0
+    return h / h.norm(dim=1, keepdim=True).clamp(min=1e-6)
+
+
+def _travel(axle_h: torch.Tensor) -> torch.Tensor:
+    return torch.stack([-axle_h[:, 1], axle_h[:, 0], torch.zeros_like(axle_h[:, 0])], dim=1)
+
+
+def _ref_steer(env):
+    """(reference axle flattened, reference travel direction, reference yaw rate)."""
+    from ..cartwheel.mdp.events import _ang_vel_table
+    r, ref, _, tsg = ref_state(env, "jump")
+    a = _flat(_axle(ref["base_quat"]))
+    yaw_rate = _ang_vel_table(env, r)[r.index_of(tsg).round().long().clamp(0, r.n - 1), 2]
+    return a, _travel(a), yaw_rate
+
+
+def _lean_err(env, robot: Entity, max_lean: float = 0.4) -> torch.Tensor:
+    """Lean (toward the left of travel, rad) minus what this speed and the reference's
+    turn rate call for: tan(lean) = v * yaw_rate / g, as for a rolling coin."""
+    _, travel_ref, yaw_rate = _ref_steer(env)
+    lean = torch.asin(_axle(robot.data.root_link_quat_w)[:, 2].clamp(-1.0, 1.0))
+    v = (robot.data.root_link_lin_vel_w * travel_ref).sum(dim=1).clamp(min=0.0)
+    target = torch.atan(v * yaw_rate / 9.81).clamp(-max_lean, max_lean)
+    return lean - target
+
+
+def steer_lean(env, sigma_sq: float = 0.05, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """1 when the wheel leans as much as its turn needs (on edge when going straight)."""
+    e = _lean_err(env, env.scene[asset_cfg.name])
+    return torch.exp(-e * e / sigma_sq)
+
+
+def steer_roll(env, max_rate: float = 4.0, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """Rolling rate about the reference's axle (forward along its heading), clipped to
+    +-max_rate, scaled to [-1, 1], times steer_lean."""
+    robot: Entity = env.scene[asset_cfg.name]
+    axle_ref, _, _ = _ref_steer(env)
+    rate = -(robot.data.root_link_ang_vel_w * axle_ref).sum(dim=1)
+    return rate.clamp(-max_rate, max_rate) / max_rate * steer_lean(env, asset_cfg=asset_cfg)
+
+
+def steer_travel(env, max_speed: float = 1.2, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """Hub speed along the reference's heading, clipped to +-max_speed, times steer_lean."""
+    robot: Entity = env.scene[asset_cfg.name]
+    _, travel_ref, _ = _ref_steer(env)
+    v = (robot.data.root_link_lin_vel_w * travel_ref).sum(dim=1)
+    return v.clamp(-max_speed, max_speed) / max_speed * steer_lean(env, asset_cfg=asset_cfg)
+
+
+def steer_heading(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """1 when the wheel heads where the reference does (its axle square to that heading)."""
+    robot: Entity = env.scene[asset_cfg.name]
+    _, travel_ref, _ = _ref_steer(env)
+    travel = _travel(_flat(_axle(robot.data.root_link_quat_w)))
+    return torch.exp(-(1.0 - (travel * travel_ref).sum(dim=1)) / sigma_sq)
+
+
+__all__ = ["gated", "gated_done", "gated_window", "phase_mask", "reset_focus", "settle", "steer_heading",
+           "steer_lean", "steer_roll", "steer_travel", "upright"]

@@ -48,7 +48,26 @@ def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: fl
 
 
 def env_cfg(asset: Path | None = None, play: bool = False):
+    return build(asset=asset, play=play)
+
+
+def build(asset: Path | None = None, play: bool = False, motion: Path | None = None,
+          steer: bool = False, episode_s: float = 6.4):
+    """The task, optionally on another reference-5-style motion (`motion`), with the
+    roll scored against the reference's heading and turn (`steer`; for a path that
+    curves, e.g. a figure 8), and an episode of `episode_s` seconds."""
     cfg = _cartwheel_jump_env_cfg(asset=asset, play=play)
+    if motion is not None:
+        cfg.commands["jump"].motion_file = str(motion)
+
+        def _reference_contract() -> dict:
+            from ..cartwheel import mdp as cw_mdp
+            from ..common.constants import HOME
+            from ..jump.env_cfg import _DECIMATION, _FUTURE_OFFSETS, _SIM_TIMESTEP
+            ref = cw_mdp.reference.JumpReference(motion, "cpu", list(HOME))
+            return ref.deploy_contract(_FUTURE_OFFSETS, _SIM_TIMESTEP * _DECIMATION, starts_on_entry=True)
+
+        cfg.reference_contract = _reference_contract
     old = cfg.actions["joint_pos"]
     cfg.actions["joint_pos"] = PhaseScaledResidualActionCfg(
         entity_name=old.entity_name, actuator_names=old.actuator_names,
@@ -67,11 +86,15 @@ def env_cfg(asset: Path | None = None, play: bool = False):
         "ref_base_rotation": _gate(r["ref_base_rotation"], "A"),
         # B: roll freely
         "roll_forward": RewardTermCfg(func=F.gated, weight=3.0,
-                                      params={"fn": roll_mdp.roll_forward, "phases": "B"}),
+                                      params={"fn": F.steer_roll if steer else roll_mdp.roll_forward,
+                                              "phases": "B"}),
         "travel_forward": RewardTermCfg(func=F.gated, weight=3.0,
-                                        params={"fn": roll_mdp.travel_forward, "phases": "B"}),
-        "on_edge": RewardTermCfg(func=F.gated, weight=1.0, params={"fn": roll_mdp.on_edge, "phases": "B"}),
-        "straight": RewardTermCfg(func=F.gated, weight=0.5, params={"fn": roll_mdp.straight, "phases": "B"}),
+                                        params={"fn": F.steer_travel if steer else roll_mdp.travel_forward,
+                                                "phases": "B"}),
+        "on_edge": RewardTermCfg(func=F.gated, weight=1.0,
+                                 params={"fn": F.steer_lean if steer else roll_mdp.on_edge, "phases": "B"}),
+        "straight": RewardTermCfg(func=F.gated, weight=1.5 if steer else 0.5,
+                                  params={"fn": F.steer_heading if steer else roll_mdp.straight, "phases": "B"}),
         "star_pose": _gate(r["ref_joint_pos"], "B", weight=STAR_WEIGHT, sigma_sq=STAR_SIGMA_SQ),
         # C: back on its feet and still
         "upright": RewardTermCfg(func=F.gated, weight=2.0, params={"fn": F.upright, "phases": "C"}),
@@ -120,9 +143,9 @@ def env_cfg(asset: Path | None = None, play: bool = False):
         ev.params = {**ev.params, "focus_s": (-0.3, 0.4), "focus_fraction": 0.35}
 
     # reference spans 5.4 s after go (+0.3 s stand before it), plus time to settle
-    cfg.episode_length_s = 6.4
+    cfg.episode_length_s = episode_s
     cfg.viewer.distance = 2.4
     return cfg
 
 
-__all__ = ["env_cfg", "JUMP_REF_NPZ"]
+__all__ = ["build", "env_cfg", "JUMP_REF_NPZ"]

@@ -56,10 +56,12 @@ NOT_LOCOMOTION = {
     # no gait prior, 22 joints, and the robot on its edge or upside down on purpose.
     "jumper.cartwheel",
     "jumper.cartwheel_flat",
+    "jumper.cartwheel_eight",
     "jumper.cartwheel_full",
     "jumper.cartwheel_jump",
     "jumper.cartwheel_roll",
     "jumper.cartwheel_runup",
+    "jumper.cartwheel_ten",
     # Imitates a fixed choreography: no command, no gait prior, 22 joints instead
     # of 20, and its reward budget is the tracking terms rather than the velocity
     # skeleton's. Nothing it could agree with the four on would mean anything.

@@ -5,7 +5,9 @@ jumps, rolls, and should end on its feet. Per env: how far through the timeline 
 got, wheel turns while rolling (by orientation), travel, whether it ended upright,
 and its final speed.
 
-  python tools/crab_trio/full_eval.py <model_N.pt> [num_envs]     # from the repo root
+  python tools/crab_trio/full_eval.py <model_N.pt> [num_envs] [task]     # from the repo root
+
+(task: jumper.cartwheel_full, jumper.cartwheel_ten or jumper.cartwheel_eight)
 """
 import math
 import sys
@@ -19,6 +21,7 @@ import tasks
 
 ckpt = sys.argv[1]
 N = int(sys.argv[2]) if len(sys.argv) > 2 else 16
+TASK = sys.argv[3] if len(sys.argv) > 3 else "jumper.cartwheel_full"
 res = resolve(backend="native", device="cpu", num_envs=N, cpu_threads=2, strip_visual=None, training=False)
 use_backend(res)
 from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
@@ -27,7 +30,7 @@ from mjlab.rl.runner import MjlabOnPolicyRunner  # noqa: E402
 
 from tasks.jumper.jump.mdp.reference import ref_state  # noqa: E402
 
-spec = tasks.get("jumper.cartwheel_full")
+spec = tasks.get(TASK)
 cfg = tasks.load_env_cfg(spec.id, asset=spec.resolve_asset(None), play=False)
 cfg.scene.num_envs = N
 cfg.observations["actor"].enable_corruption = False
