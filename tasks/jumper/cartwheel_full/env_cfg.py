@@ -11,8 +11,10 @@ B (roll): `jumper.cartwheel_roll`'s terms -- roll about the world axle, forward
 C (tip down, stand): joint pose, height and gravity direction tracked toward the
   reference's stand, plus upright and settle; nothing ends it but the clock.
 
-Residual scale 0.7 rad as in jumper.cartwheel_roll, so that policy's checkpoint is
-a working start for phase B (same observation and action spaces).
+Residual reach 0.7 rad in the roll (as jumper.cartwheel_roll, whose checkpoint is the
+starting point: same observation and action spaces) and 0.4 rad elsewhere
+(`full_actions.py`): one 0.7 everywhere let the rolling policy's large outputs throw
+the trot off the reference in its first second.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from ..cartwheel_jump.env_cfg import JUMP_REF_NPZ
 from ..cartwheel_jump.env_cfg import env_cfg as _cartwheel_jump_env_cfg
 from ..cartwheel_roll import roll_mdp
 from . import full_mdp as F
+from .full_actions import PhaseScaledResidualActionCfg
 
 ACTION_SCALE = 0.7
 
@@ -40,8 +43,11 @@ def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: fl
 
 def env_cfg(asset: Path | None = None, play: bool = False):
     cfg = _cartwheel_jump_env_cfg(asset=asset, play=play)
-    act = cfg.actions["joint_pos"]
-    act.scale = {j: ACTION_SCALE for j in act.scale}
+    old = cfg.actions["joint_pos"]
+    cfg.actions["joint_pos"] = PhaseScaledResidualActionCfg(
+        entity_name=old.entity_name, actuator_names=old.actuator_names,
+        scale={j: ACTION_SCALE for j in old.scale}, command_name=old.command_name,
+    )
 
     r = cfg.rewards
     rewards = {
