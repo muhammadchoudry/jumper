@@ -53,6 +53,41 @@ def gated_done(env, fn, phases: str, after_start: float = 0.0, **params) -> torc
     return fn(env, **params) & phase_mask(env, phases, after_start=after_start)
 
 
+def _seg_time(env, name: str | None, end: bool = False) -> float:
+    if name is None:
+        return float("inf") if end else float("-inf")
+    seg = get_reference(env).meta["segments_s_after_go"]
+    return float(seg[name][0])
+
+
+def gated_window(env, fn, start: str | None = None, end: str | None = None, **params) -> torch.Tensor:
+    """A termination `fn` that only ends episodes between the start of segment
+    `start` and the start of segment `end` (None = open), e.g. the jump itself:
+    start="jump", end="roll" stops at touch-down."""
+    _, _, _, tsg = ref_state(env, "jump")
+    m = (tsg >= _seg_time(env, start)) & (tsg < _seg_time(env, end, end=True))
+    return fn(env, **params) & m
+
+
+def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_fraction: float = 0.35,
+                phase_range: tuple[float, float] = (0.0, 0.95), **kw) -> None:
+    """Reference-state spawn with a share of envs placed around the jump and landing:
+    `focus_fraction` of them start between `focus_s[0]` s before the jump and
+    `focus_s[1]` s after touch-down, the rest anywhere in `phase_range`."""
+    from ..cartwheel.mdp.events import reset_from_reference_phase
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.int)
+    ref = get_reference(env)
+    seg = ref.meta["segments_s_after_go"]
+    lo = max(0.0, (float(seg["jump"][0]) + focus_s[0]) / ref.span)
+    hi = min(0.99, (float(seg["roll"][0]) + focus_s[1]) / ref.span)
+    pick = torch.rand(len(env_ids), device=env.device) < focus_fraction
+    if pick.any():
+        reset_from_reference_phase(env, env_ids[pick], phase_range=(lo, hi), **kw)
+    if (~pick).any():
+        reset_from_reference_phase(env, env_ids[~pick], phase_range=phase_range, **kw)
+
+
 def settle(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
     """1 when the body is still (linear and angular speed small)."""
     robot: Entity = env.scene[asset_cfg.name]
@@ -67,4 +102,4 @@ def upright(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> t
     return torch.exp(-e / sigma_sq)
 
 
-__all__ = ["gated", "gated_done", "phase_mask", "settle", "upright"]
+__all__ = ["gated", "gated_done", "gated_window", "phase_mask", "reset_focus", "settle", "upright"]

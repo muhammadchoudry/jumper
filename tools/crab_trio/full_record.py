@@ -28,6 +28,8 @@ cfg = tasks.load_env_cfg(spec.id, asset=spec.resolve_asset(None), play=False)
 cfg.scene.num_envs = N
 cfg.observations["actor"].enable_corruption = False
 cfg.events["reset_from_reference"].params["phase_range"] = (0.0, 0.001)
+if "focus_fraction" in cfg.events["reset_from_reference"].params:
+    cfg.events["reset_from_reference"].params["focus_fraction"] = 0.0
 cfg.events.pop("push_robot", None)
 env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
 agent = tasks.load_agent_cfg(spec.id)

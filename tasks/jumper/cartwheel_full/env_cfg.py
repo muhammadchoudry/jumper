@@ -2,12 +2,16 @@
 scheme, with each reward and termination switched on only in its phase (see
 `full_mdp.py`):
 
-A (stand, run-up, jump, landing): the jump task's imitation terms, the full
-  rotation tracking, and its divergence terminations.
+A (stand, run-up, jump, landing): the jump task's imitation terms and full
+  rotation tracking. Terminations: the full-rotation and gravity checks (1 rad)
+  during the run-up, a looser full-rotation check (1.6 rad) during the jump, joint
+  divergence to touch-down, and none after it.
 B (roll): `jumper.cartwheel_roll`'s terms -- roll about the world axle, forward
-  travel, on edge, straight, light pull toward the star; ends if it topples off
+  travel, on edge, straight -- and a firm pull toward the spread-out star
+  (`star_pose`, weight 1.5, kernel 0.15 rad^2 mean-square: ~0.15 rad of pumping
+  costs little, folded legs cost most of it); ends if it topples off
   its edge (after the landing has had 0.4 s to stand up) or the hub drops below
-  0.15 m.
+  0.15 m (both after 0.4 s to recover from the landing).
 C (tip down, stand): joint pose, height and gravity direction tracked toward the
   reference's stand, plus upright and settle; nothing ends it but the clock.
 
@@ -31,6 +35,8 @@ from . import full_mdp as F
 from .full_actions import PhaseScaledResidualActionCfg
 
 ACTION_SCALE = 0.7
+JUMP_MAX_ROTATION_ERROR = 1.6   # rad, during the jump only
+STAR_WEIGHT, STAR_SIGMA_SQ = 1.5, 0.15
 
 
 def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: float | None = None,
@@ -66,7 +72,7 @@ def env_cfg(asset: Path | None = None, play: bool = False):
                                         params={"fn": roll_mdp.travel_forward, "phases": "B"}),
         "on_edge": RewardTermCfg(func=F.gated, weight=1.0, params={"fn": roll_mdp.on_edge, "phases": "B"}),
         "straight": RewardTermCfg(func=F.gated, weight=0.5, params={"fn": roll_mdp.straight, "phases": "B"}),
-        "star_pose": _gate(r["ref_joint_pos"], "B", weight=0.3, sigma_sq=1.0),
+        "star_pose": _gate(r["ref_joint_pos"], "B", weight=STAR_WEIGHT, sigma_sq=STAR_SIGMA_SQ),
         # C: back on its feet and still
         "upright": RewardTermCfg(func=F.gated, weight=2.0, params={"fn": F.upright, "phases": "C"}),
         "settle": RewardTermCfg(func=F.gated, weight=1.0, params={"fn": F.settle, "phases": "C"}),
@@ -81,24 +87,37 @@ def env_cfg(asset: Path | None = None, play: bool = False):
     cfg.rewards = rewards
 
     t = cfg.terminations
+    rot, ori = t["rotation_diverged"], t["orientation_diverged"]
     cfg.terminations = {
         "time_out": t["time_out"],
+        # the run-up: the full-rotation and gravity checks as in cartwheel_jump
         "rotation_diverged": TerminationTermCfg(
-            func=F.gated_done, params={"fn": t["rotation_diverged"].func, "phases": "A",
-                                       **t["rotation_diverged"].params}),
+            func=F.gated_window, params={"fn": rot.func, "end": "jump", **rot.params}),
         "orientation_diverged": TerminationTermCfg(
-            func=F.gated_done, params={"fn": t["orientation_diverged"].func, "phases": "A",
-                                       **t["orientation_diverged"].params}),
+            func=F.gated_window, params={"fn": ori.func, "end": "jump", **ori.params}),
+        # the jump: looser (the robot tips onto its edge its own way), and nothing after
+        # touch-down -- round 8899 lost 13/16 attempts to the 1 rad check in the 0.15 s
+        # after landing, leaning more than the reference but able to roll on
+        "rotation_diverged_jump": TerminationTermCfg(
+            func=F.gated_window, params={"fn": rot.func, "start": "jump", "end": "roll",
+                                         **{**rot.params, "max_angle": JUMP_MAX_ROTATION_ERROR}}),
         "fell_off_edge": TerminationTermCfg(
             func=F.gated_done, params={"fn": roll_mdp.fell_off_edge, "phases": "B", "after_start": 0.4,
                                        "max_tilt_cos": 0.7}),
         "hub_too_low": TerminationTermCfg(
-            func=F.gated_done, params={"fn": roll_mdp.hub_too_low, "phases": "B", "min_height": 0.15}),
+            func=F.gated_done, params={"fn": roll_mdp.hub_too_low, "phases": "B", "after_start": 0.4,
+                                       "min_height": 0.15}),
     }
     if "reference_diverged" in t:
         cfg.terminations["reference_diverged"] = TerminationTermCfg(
-            func=F.gated_done, params={"fn": t["reference_diverged"].func, "phases": "A",
-                                       **t["reference_diverged"].params})
+            func=F.gated_window, params={"fn": t["reference_diverged"].func, "end": "roll",
+                                         **t["reference_diverged"].params})
+
+    # a third of the practice starts around the jump and landing
+    ev = cfg.events["reset_from_reference"]
+    if not play:
+        ev.func = F.reset_focus
+        ev.params = {**ev.params, "focus_s": (-0.3, 0.4), "focus_fraction": 0.35}
 
     # reference spans 5.4 s after go (+0.3 s stand before it), plus time to settle
     cfg.episode_length_s = 6.4

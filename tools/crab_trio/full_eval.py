@@ -32,6 +32,8 @@ cfg = tasks.load_env_cfg(spec.id, asset=spec.resolve_asset(None), play=False)
 cfg.scene.num_envs = N
 cfg.observations["actor"].enable_corruption = False
 cfg.events["reset_from_reference"].params["phase_range"] = (0.0, 0.001)
+if "focus_fraction" in cfg.events["reset_from_reference"].params:
+    cfg.events["reset_from_reference"].params["focus_fraction"] = 0.0
 cfg.events.pop("push_robot", None)
 env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
 agent = tasks.load_agent_cfg(spec.id)
@@ -46,6 +48,11 @@ segs = r.meta["segments_s_after_go"]
 b0, b1 = segs["roll"][0], segs["roll"][1]
 
 alive = torch.ones(N, dtype=torch.bool)
+TIPS = ("LF_finger_tip_link", "RF_finger_tip_link", "LM_foot_tip_link", "RM_foot_tip_link",
+        "LR_foot_tip_link", "RR_foot_tip_link")
+tip_ids = [robot.body_names.index(b) for b in TIPS]
+spread_sum = torch.zeros(N)
+spread_n = torch.zeros(N)
 last_t = torch.zeros(N)
 why = [""] * N
 wheel = torch.zeros(N)
@@ -66,6 +73,10 @@ for k in range(int(env.max_episode_length) - 2):
         dd = (ang - prev + math.pi) % (2 * math.pi) - math.pi
         wheel += torch.where(rolling, dd, torch.zeros_like(dd))
     prev = ang
+    # leg spread: mean distance of the six tips from the hub, while rolling
+    d = (robot.data.body_link_pos_w[:, tip_ids] - robot.data.root_link_pos_w[:, None]).norm(dim=2).mean(dim=1)
+    spread_sum += torch.where(rolling, d, torch.zeros_like(d))
+    spread_n += rolling.float()
     px = robot.data.root_link_pos_w[:, 0]
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
@@ -89,7 +100,7 @@ def stage(t):
 
 
 print(f"roll segment {b0:.2f}-{b1:.2f}s after go")
-print("env: got to | wheel turns while rolling | travel while rolling | ends upright | final speed | why it ended")
+print("env: got to | wheel turns while rolling | travel while rolling | leg spread while rolling (star 0.30 m) | ends upright | final speed | why it ended")
 full = 0
 for i in range(N):
     up = float(g_end[i]) < -0.9
@@ -98,7 +109,8 @@ for i in range(N):
     trav = float(x_roll1[i] - x_roll0[i]) if not math.isnan(float(x_roll0[i])) else 0.0
     if done_ok and up and turns >= 0.9:
         full += 1
-    print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:+5.2f} m  "
+    spread = float(spread_sum[i] / spread_n[i]) if spread_n[i] > 0 else float("nan")
+    print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:+5.2f} m  spread {spread:.2f} m  "
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")
