@@ -228,6 +228,23 @@ tan(lean) = v · yaw rate / g, the way a rolling coin leans into a turn
   edge (shell on one side, legs on the other). Next: index the heading target by
   distance rolled; check (2) with a mirrored 8 (right loop first).
 
+- **Figure 8, try 3** (commit a4f2c1d: the 8 drawn by distance rolled from where
+  each roll starts, left- or right-first at random; 4000 rounds from try 2):
+  **no figure 8 — it learned to roll in small circles.** Best checkpoint, round
+  20550 (`eight_v3_model_20550.pt`), 16 attempts from standing: 9/16 complete
+  the cartwheel (trot, jump, ~9 turns, back on its feet), but each one rolls 3–4
+  tight loops (~0.3–0.4 m radius, heading turning ~140°/s), covering only
+  3.3–4.7 m: `cartwheel_eight_try3_top.mp4`, `cartwheel_eight_try3_path.png`. It
+  **does** turn right as well as left (both directions show up), so the robot
+  can turn either way. Why circles score: the roll reward was gated by lean only,
+  and the 8's progress follows distance, so slow circling kept the lean target
+  near zero and paid the roll reward without ever matching the heading.
+  The final round (22549) collapsed in the trot: 15/16 drift off heading in the
+  run-up (`rotation_diverged`) — fewer run-up practice starts, and longer
+  episodes dominated by the roll.
+  (`full_eval` / `full_record` had kept the mid-roll practice starts on until
+  this check; fixed — the numbers above are from standing.)
+
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works
 on a curving path.
