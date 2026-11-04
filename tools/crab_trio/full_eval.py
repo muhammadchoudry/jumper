@@ -56,6 +56,8 @@ TIPS = ("LF_finger_tip_link", "RF_finger_tip_link", "LM_foot_tip_link", "RM_foot
         "LR_foot_tip_link", "RR_foot_tip_link")
 tip_ids = [robot.body_names.index(b) for b in TIPS]
 spread_sum = torch.zeros(N)
+short_sum = torch.zeros(N)
+short_max = torch.zeros(N)
 path_len = torch.zeros(N)
 sign_at_roll = torch.zeros(N)
 last_xy = robot.data.root_link_pos_w[:, :2].clone()
@@ -88,6 +90,10 @@ for k in range(int(env.max_episode_length) - 2):
     d = (robot.data.body_link_pos_w[:, tip_ids] - robot.data.root_link_pos_w[:, None]).norm(dim=2).mean(dim=1)
     spread_sum += torch.where(rolling, d, torch.zeros_like(d))
     spread_n += rolling.float()
+    from tasks.jumper.cartwheel_full.full_mdp import leg_shortening
+    sh = leg_shortening(env).clamp(min=0)
+    short_sum += torch.where(rolling, sh.mean(dim=1), torch.zeros(N))
+    short_max = torch.where(rolling, torch.maximum(short_max, sh.max(dim=1).values), short_max)
     px = robot.data.root_link_pos_w[:, 0]
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
@@ -136,6 +142,8 @@ for i in range(N):
     spread = float(spread_sum[i] / spread_n[i]) if spread_n[i] > 0 else float("nan")
     print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:5.2f} m path  "
           f"turned {math.degrees(float(abs_yaw[i])):4.0f} deg (net {math.degrees(float(net_yaw[i])):+4.0f})  spread {spread:.2f} m  "
+          f"legs short {100 * float(short_sum[i] / spread_n[i]) if spread_n[i] > 0 else float('nan'):4.1f}% avg "
+          f"{100 * float(short_max[i]):4.1f}% worst  "
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")

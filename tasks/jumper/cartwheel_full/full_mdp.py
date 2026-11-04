@@ -101,6 +101,36 @@ def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_
         reset_from_reference_phase(env, env_ids[rest], phase_range=phase_range, **kw)
 
 
+#: hip (the J0 joint's body) and tip of each limb, and the hip-to-tip distance of the
+#: straight limb in the star pose (claws 0.252 m, legs 0.228 m)
+LIMB_HIP_TIP = (("LF_shoulder_link", "LF_finger_tip_link", 0.2520),
+                ("RF_shoulder_link", "RF_finger_tip_link", 0.2520),
+                ("LM_hip_link", "LM_foot_tip_link", 0.2278),
+                ("RM_hip_link", "RM_foot_tip_link", 0.2278),
+                ("LR_hip_link", "LR_foot_tip_link", 0.2278),
+                ("RR_hip_link", "RR_foot_tip_link", 0.2278))
+
+
+def leg_shortening(env, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """(E, 6) fraction each limb is short of fully straight (0 = straight; a 0.3 rad
+    knee bend is ~0.03). Hip swing and out-of-plane tilt keep a limb straight."""
+    robot: Entity = env.scene[asset_cfg.name]
+    if not hasattr(env, "_limb_ids"):
+        names = robot.body_names
+        env._limb_ids = ([names.index(h) for h, _, _ in LIMB_HIP_TIP], [names.index(t) for _, t, _ in LIMB_HIP_TIP],
+                         torch.tensor([length for _, _, length in LIMB_HIP_TIP], device=env.device))
+    hips, tips, length = env._limb_ids
+    p = robot.data.body_link_pos_w
+    return 1.0 - (p[:, tips] - p[:, hips]).norm(dim=2) / length
+
+
+def legs_straight(env, sigma: float = 0.02, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """1 when every limb is fully extended hip to tip; falls off as knees bend
+    (mean square shortening over the six limbs against sigma^2)."""
+    e = leg_shortening(env, asset_cfg).clamp(min=0.0)
+    return torch.exp(-(e * e).mean(dim=1) / (sigma * sigma))
+
+
 def settle(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
     """1 when the body is still (linear and angular speed small)."""
     robot: Entity = env.scene[asset_cfg.name]
@@ -324,6 +354,6 @@ def eight_travel(env, max_speed: float = 1.2, asset_cfg: SceneEntityCfg = _ROBOT
     return v.clamp(-max_speed, max_speed) / max_speed * eight_heading(env, asset_cfg=asset_cfg)
 
 
-__all__ = ["eight_heading", "eight_lean", "eight_roll", "eight_state", "eight_travel", "gated", "gated_done",
+__all__ = ["eight_heading", "eight_lean", "leg_shortening", "legs_straight", "eight_roll", "eight_state", "eight_travel", "gated", "gated_done",
            "gated_window", "phase_mask", "reset_focus", "settle", "steer_heading", "steer_lean", "steer_roll",
            "steer_travel", "upright"]

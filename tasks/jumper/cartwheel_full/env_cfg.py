@@ -37,6 +37,7 @@ from .full_actions import PhaseScaledResidualActionCfg
 ACTION_SCALE = 0.7
 JUMP_MAX_ROTATION_ERROR = 1.6   # rad, during the jump only
 STAR_WEIGHT, STAR_SIGMA_SQ = 1.5, 0.15
+STRAIGHT_WEIGHT = 3.0
 
 
 def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: float | None = None,
@@ -65,7 +66,7 @@ def env_cfg(asset: Path | None = None, play: bool = False):
 
 
 def build(asset: Path | None = None, play: bool = False, motion: Path | None = None,
-          steer: bool | str = False, episode_s: float = 6.4):
+          steer: bool | str = False, episode_s: float = 6.4, straight_legs: bool = False):
     """The task, optionally on another reference-5-style motion (`motion`), with the
     roll scored against the reference's heading and turn (`steer`; for a path that
     curves, e.g. a figure 8), and an episode of `episode_s` seconds."""
@@ -115,6 +116,14 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
         "undesired_contacts": r["undesired_contacts"],
         "action_rate_l2": r["action_rate_l2"],
     }
+    if straight_legs:
+        # legs fully extended hip to tip while rolling; the hips stay free to swing a
+        # straight leg forward and tilt it out of the wheel's plane (its reach in the
+        # plane shortens -- the pumping a bent knee did), so the old pull toward the
+        # star's exact joint angles is relaxed
+        rewards["legs_straight"] = RewardTermCfg(func=F.gated, weight=STRAIGHT_WEIGHT,
+                                                 params={"fn": F.legs_straight, "phases": "B", "after_start": 0.3})
+        rewards["star_pose"] = _gate(r["ref_joint_pos"], "B", weight=0.3, sigma_sq=1.0)
     rewards["undesired_contacts"].weight = -2.0
     rewards["action_rate_l2"].weight = -0.01 * (0.30 / ACTION_SCALE) ** 2
     cfg.rewards = rewards
