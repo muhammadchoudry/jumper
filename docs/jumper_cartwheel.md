@@ -216,6 +216,17 @@ tan(lean) = v · yaw rate / g, the way a rolling coin leans into a turn
   diagonals; at most ~14° of lean at 1.1 m/s), a longer roll (5.5 reference turns,
   7.5 s; 11.8 s episodes), and 25% of practice starts between 30% and 70% of the
   roll (around the crossing), 20% at the jump. Continuing from try 1's policy.
+  **Result (round 18550): still no figure 8, 0/16.** It rolls much longer — 9/16
+  roll 8–10.5 turns over 7.6–10.8 m — but every one turns **left** only: net heading
+  +115° to +560° where the 8 needs +240° then back to 0. The best attempt rolls the
+  left loop, keeps turning left past where the right loop should start, then falls
+  (`cartwheel_eight_try2_top.mp4`, `cartwheel_eight_try2_path.png`; checkpoint
+  `eight_v2_model_18550.pt`). Across both tries it has never learned to turn right.
+  Candidate causes: (1) the heading target runs on the reference's clock, not on how
+  far the robot has rolled, so once it is ahead or behind, the target says "turn"
+  at the wrong place; (2) a left/right asymmetry of the body rolling on its right
+  edge (shell on one side, legs on the other). Next: index the heading target by
+  distance rolled; check (2) with a mirrored 8 (right loop first).
 
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works
