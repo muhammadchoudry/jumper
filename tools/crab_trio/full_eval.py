@@ -135,3 +135,12 @@ for i in range(N):
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")
+if TASK == "jumper.cartwheel_eight" and hasattr(env, "_eight_sign"):
+    eights = 0
+    for i in range(N):
+        ok8 = ((alive[i] or why[i] == "time_out") and float(g_end[i]) < -0.9
+               and math.degrees(float(abs_yaw[i])) >= 400 and abs(math.degrees(float(net_yaw[i]))) <= 90)
+        eights += ok8
+    print("loop order per env (+1 left first, -1 right first; set at the last reset):",
+          [int(x) for x in env._eight_sign.tolist()])
+    print(f"figure 8s (ran to the end upright, turned >= 400 deg in total, net within 90 deg): {eights}/{N}")

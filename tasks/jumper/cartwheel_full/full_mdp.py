@@ -190,5 +190,140 @@ def steer_heading(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT
     return torch.exp(-(1.0 - (travel * travel_ref).sum(dim=1)) / sigma_sq)
 
 
-__all__ = ["gated", "gated_done", "gated_window", "phase_mask", "reset_focus", "settle", "steer_heading",
-           "steer_lean", "steer_roll", "steer_travel", "upright"]
+
+
+
+# ── Figure 8 by distance rolled (jumper.cartwheel_eight, try 3) ────────────────────────
+# Tries 1-2 steered toward the reference's heading at each moment of the reference's
+# clock: once the robot was ahead of or behind the reference, the turn targets fell in
+# the wrong places, and it never learned the right-hand loop. Here each env draws its
+# own figure 8 from where it lands: the target heading is a function of the distance
+# it has rolled since the roll began (EIGHT_LENGTH m for the whole 8), measured from
+# its own heading at that moment, and mirrored (right loop first) in half the envs.
+
+EIGHT_LENGTH = 8.0          # m of path for the whole figure 8 (~1.1 m/s for 7.5 s)
+_EIGHT_PROFILE = None
+
+
+def _eight_profile_t(device):
+    """(s grid, heading, curvature per unit s) for the crossing-diagonals 8."""
+    global _EIGHT_PROFILE
+    if _EIGHT_PROFILE is None or _EIGHT_PROFILE[0].device != torch.device(device):
+        import importlib.util
+        import pathlib
+        p = pathlib.Path(__file__).resolve().parents[3] / "tools/crab_trio/cartwheel_ref5.py"
+        spec = importlib.util.spec_from_file_location("_cartwheel_ref5", p)
+        # cartwheel_ref5 imports its siblings by name: put tools/crab_trio on the path for the load
+        import sys
+        sys.path.insert(0, str(p.parent))
+        try:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            s, psi = mod._eight_profile()
+        finally:
+            sys.path.remove(str(p.parent))
+        s = torch.as_tensor(s, dtype=torch.float32, device=device)
+        psi = torch.as_tensor(psi, dtype=torch.float32, device=device)
+        kappa = torch.gradient(psi, spacing=(s,))[0]
+        _EIGHT_PROFILE = (s, psi, kappa)
+    return _EIGHT_PROFILE
+
+
+def _interp(x: torch.Tensor, xs: torch.Tensor, ys: torch.Tensor) -> torch.Tensor:
+    i = torch.searchsorted(xs, x.clamp(xs[0], xs[-1])).clamp(1, len(xs) - 1)
+    x0, x1, y0, y1 = xs[i - 1], xs[i], ys[i - 1], ys[i]
+    w = ((x - x0) / (x1 - x0).clamp(min=1e-9)).clamp(0, 1)
+    return y0 + w * (y1 - y0)
+
+
+def _heading(q: torch.Tensor) -> torch.Tensor:
+    """Travel heading of a wheel with this orientation (up x axle), rad."""
+    t = _travel(_flat(_axle(q)))
+    return torch.atan2(t[:, 1], t[:, 0])
+
+
+def eight_state(env, asset_cfg: SceneEntityCfg = _ROBOT):
+    """Per env, this step: (target heading, target curvature per m, distance rolled,
+    mirror sign, in-roll mask). Cached per step; state lives on the env."""
+    stamp = int(env.common_step_counter)
+    if getattr(env, "_eight_stamp", None) == stamp:
+        return env._eight_cache
+    robot: Entity = env.scene[asset_cfg.name]
+    n, dev = env.num_envs, env.device
+    if not hasattr(env, "_eight_d"):
+        env._eight_d = torch.zeros(n, device=dev)
+        env._eight_psi0 = torch.full((n,), float("nan"), device=dev)
+        env._eight_sign = torch.ones(n, device=dev)
+        env._eight_t = torch.zeros(n, device=dev)
+    _, _, _, tsg = ref_state(env, "jump")
+    in_roll = phase_mask(env, "B")
+    # a new episode: fresh distance and heading, a random direction; envs born mid-roll
+    # start somewhere along their 8, so every part of it (the crossing too) gets practice
+    new = env.episode_length_buf <= 1
+    if new.any():
+        env._eight_psi0[new] = float("nan")
+        env._eight_sign[new] = torch.where(torch.rand(int(new.sum()), device=dev) < 0.5, -1.0, 1.0)
+        born_in_roll = new & in_roll
+        env._eight_d[new] = 0.0
+        env._eight_d[born_in_roll] = torch.rand(int(born_in_roll.sum()), device=dev) * 0.9 * EIGHT_LENGTH
+    heading = _heading(robot.data.root_link_quat_w)
+    s_grid, psi_grid, kappa_grid = _eight_profile_t(dev)
+    frac = (env._eight_d / EIGHT_LENGTH).clamp(0, 1)
+    prof = _interp(frac, s_grid, psi_grid)
+    start = in_roll & torch.isnan(env._eight_psi0)
+    if start.any():                         # psi0 is where the 8 would have started from
+        env._eight_psi0[start] = heading[start] - env._eight_sign[start] * prof[start]
+    v = (robot.data.root_link_lin_vel_w[:, :2] * torch.stack([torch.cos(heading), torch.sin(heading)], 1)).sum(1)
+    env._eight_d = torch.where(in_roll, env._eight_d + v.clamp(min=0) * env.step_dt, env._eight_d)
+    frac = (env._eight_d / EIGHT_LENGTH).clamp(0, 1)
+    target = env._eight_psi0 + env._eight_sign * _interp(frac, s_grid, psi_grid)
+    done = env._eight_d >= EIGHT_LENGTH
+    kappa = torch.where(done, torch.zeros_like(frac),
+                        env._eight_sign * _interp(frac, s_grid, kappa_grid) / EIGHT_LENGTH)
+    env._eight_cache = (torch.nan_to_num(target), kappa, env._eight_d, env._eight_sign, in_roll)
+    env._eight_stamp = stamp
+    return env._eight_cache
+
+
+def eight_lean(env, sigma_sq: float = 0.05, max_lean: float = 0.4, asset_cfg: SceneEntityCfg = _ROBOT):
+    """1 when the lean (toward the left of travel) is what the 8's curvature here needs
+    at this speed: tan(lean) = v^2 * curvature / g."""
+    robot: Entity = env.scene[asset_cfg.name]
+    _, kappa, _, _, _ = eight_state(env, asset_cfg)
+    lean = torch.asin(_axle(robot.data.root_link_quat_w)[:, 2].clamp(-1.0, 1.0))
+    heading = _heading(robot.data.root_link_quat_w)
+    v = (robot.data.root_link_lin_vel_w[:, :2] * torch.stack([torch.cos(heading), torch.sin(heading)], 1)).sum(1)
+    target = torch.atan(v.clamp(min=0) ** 2 * kappa / 9.81).clamp(-max_lean, max_lean)
+    e = lean - target
+    return torch.exp(-e * e / sigma_sq)
+
+
+def eight_heading(env, sigma_sq: float = 0.1, asset_cfg: SceneEntityCfg = _ROBOT):
+    """1 when the travel heading matches the 8's at the distance rolled."""
+    robot: Entity = env.scene[asset_cfg.name]
+    target, _, _, _, _ = eight_state(env, asset_cfg)
+    err = _heading(robot.data.root_link_quat_w) - target
+    return torch.exp(-(1.0 - torch.cos(err)) / sigma_sq)
+
+
+def eight_roll(env, max_rate: float = 4.0, asset_cfg: SceneEntityCfg = _ROBOT):
+    """Rolling rate about the robot's own (horizontal) axle, scaled to [-1, 1], times
+    eight_lean. A coin spinning in place turns about the vertical: it scores nothing."""
+    robot: Entity = env.scene[asset_cfg.name]
+    axle = _flat(_axle(robot.data.root_link_quat_w))
+    rate = -(robot.data.root_link_ang_vel_w * axle).sum(dim=1)
+    return rate.clamp(-max_rate, max_rate) / max_rate * eight_lean(env, asset_cfg=asset_cfg)
+
+
+def eight_travel(env, max_speed: float = 1.2, asset_cfg: SceneEntityCfg = _ROBOT):
+    """Hub speed along its own heading, scaled to [-1, 1], times eight_heading (so
+    rolling counts when it goes the 8's way)."""
+    robot: Entity = env.scene[asset_cfg.name]
+    heading = _heading(robot.data.root_link_quat_w)
+    v = (robot.data.root_link_lin_vel_w[:, :2] * torch.stack([torch.cos(heading), torch.sin(heading)], 1)).sum(1)
+    return v.clamp(-max_speed, max_speed) / max_speed * eight_heading(env, asset_cfg=asset_cfg)
+
+
+__all__ = ["eight_heading", "eight_lean", "eight_roll", "eight_state", "eight_travel", "gated", "gated_done",
+           "gated_window", "phase_mask", "reset_focus", "settle", "steer_heading", "steer_lean", "steer_roll",
+           "steer_travel", "upright"]

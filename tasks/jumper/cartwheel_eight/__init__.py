@@ -3,7 +3,7 @@
 `jumper.cartwheel_full`'s phase-gated task (cartwheel_full/env_cfg.py `build`) on
 reference 5 (`ref/cartwheel_eight.npz`, tools/crab_trio/cartwheel_ref5.py): trot, sideways
 jump, a roll segment ~5.5 s long (about 10 turns at the policy's pace), tip down,
-stand. The roll is scored against the reference's heading at each moment, its lean against what the turn needs (tan(lean) = v * yaw rate / g, as a rolling coin leans), so it learns to steer.
+stand. Try 3: each env draws its own figure 8 by distance rolled from where its roll begins (full_mdp.eight_state), left loop first or right loop first at random; heading and lean (tan(lean) = v^2 * curvature / g, as a rolling coin leans) are scored against that.
 """
 
 from __future__ import annotations

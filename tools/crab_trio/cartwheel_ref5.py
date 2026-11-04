@@ -12,8 +12,9 @@ is what matters, ~5.5 s, about what 10 turns take it), then tip down and stand.
              tangent circles: the lean had to flip from left to right in ~0.4 s, and
              the trained policy rolled the left loop and fell at the switch.)
 
-  python cartwheel_ref5.py   # writes tasks/jumper/cartwheel_ten/ref/cartwheel_ten.npz
-                             #    and tasks/jumper/cartwheel_eight/ref/cartwheel_eight.npz
+  python cartwheel_ref5.py   # writes tasks/jumper/cartwheel_ten/ref/cartwheel_ten.npz,
+                             #    tasks/jumper/cartwheel_eight/ref/cartwheel_eight.npz
+                             #    and .../cartwheel_long.npz (straight, the 8's roll length)
 """
 from __future__ import annotations
 
@@ -89,7 +90,10 @@ def main():
     R4.HEADING_FN = None
     R4.OUT = R4.ROOT / "tasks/jumper/cartwheel_ten/ref/cartwheel_ten.npz"
     R4.build()
-    R4.TURNS = EIGHT_TURNS
+    R4.TURNS = EIGHT_TURNS                       # straight, the 8's roll length: spawn states for
+    R4.HEADING_FN = None                         # cartwheel_eight try 3 (it draws its 8 by distance)
+    R4.OUT = R4.ROOT / "tasks/jumper/cartwheel_eight/ref/cartwheel_long.npz"
+    R4.build()
     R4.HEADING_FN = eight3
     R4.OUT = R4.ROOT / "tasks/jumper/cartwheel_eight/ref/cartwheel_eight.npz"
     R4.build()

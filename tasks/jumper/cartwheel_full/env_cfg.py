@@ -47,12 +47,25 @@ def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: fl
     )
 
 
+#: roll-phase rewards (roll, travel, lean, heading) per steering mode:
+#:   False       straight along world +x (cartwheel_roll's terms)
+#:   True/"ref"  follow the reference's heading at each moment (figure 8 tries 1-2)
+#:   "distance"  draw a figure 8 by distance rolled, from wherever the roll starts,
+#:               mirrored in half the envs (figure 8 try 3)
+B_FN = {
+    False: (roll_mdp.roll_forward, roll_mdp.travel_forward, roll_mdp.on_edge, roll_mdp.straight),
+    True: (F.steer_roll, F.steer_travel, F.steer_lean, F.steer_heading),
+    "ref": (F.steer_roll, F.steer_travel, F.steer_lean, F.steer_heading),
+    "distance": (F.eight_roll, F.eight_travel, F.eight_lean, F.eight_heading),
+}
+
+
 def env_cfg(asset: Path | None = None, play: bool = False):
     return build(asset=asset, play=play)
 
 
 def build(asset: Path | None = None, play: bool = False, motion: Path | None = None,
-          steer: bool = False, episode_s: float = 6.4):
+          steer: bool | str = False, episode_s: float = 6.4):
     """The task, optionally on another reference-5-style motion (`motion`), with the
     roll scored against the reference's heading and turn (`steer`; for a path that
     curves, e.g. a figure 8), and an episode of `episode_s` seconds."""
@@ -86,15 +99,12 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
         "ref_base_rotation": _gate(r["ref_base_rotation"], "A"),
         # B: roll freely
         "roll_forward": RewardTermCfg(func=F.gated, weight=3.0,
-                                      params={"fn": F.steer_roll if steer else roll_mdp.roll_forward,
-                                              "phases": "B"}),
+                                      params={"fn": B_FN[steer][0], "phases": "B"}),
         "travel_forward": RewardTermCfg(func=F.gated, weight=3.0,
-                                        params={"fn": F.steer_travel if steer else roll_mdp.travel_forward,
-                                                "phases": "B"}),
-        "on_edge": RewardTermCfg(func=F.gated, weight=1.0,
-                                 params={"fn": F.steer_lean if steer else roll_mdp.on_edge, "phases": "B"}),
-        "straight": RewardTermCfg(func=F.gated, weight=1.5 if steer else 0.5,
-                                  params={"fn": F.steer_heading if steer else roll_mdp.straight, "phases": "B"}),
+                                        params={"fn": B_FN[steer][1], "phases": "B"}),
+        "on_edge": RewardTermCfg(func=F.gated, weight=1.0, params={"fn": B_FN[steer][2], "phases": "B"}),
+        "straight": RewardTermCfg(func=F.gated, weight=0.5 if not steer else 1.5,
+                                  params={"fn": B_FN[steer][3], "phases": "B"}),
         "star_pose": _gate(r["ref_joint_pos"], "B", weight=STAR_WEIGHT, sigma_sq=STAR_SIGMA_SQ),
         # C: back on its feet and still
         "upright": RewardTermCfg(func=F.gated, weight=2.0, params={"fn": F.upright, "phases": "C"}),
