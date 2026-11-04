@@ -56,6 +56,7 @@ TIPS = ("LF_finger_tip_link", "RF_finger_tip_link", "LM_foot_tip_link", "RM_foot
 tip_ids = [robot.body_names.index(b) for b in TIPS]
 spread_sum = torch.zeros(N)
 path_len = torch.zeros(N)
+sign_at_roll = torch.zeros(N)
 last_xy = robot.data.root_link_pos_w[:, :2].clone()
 last_yaw = torch.zeros(N)
 net_yaw = torch.zeros(N)
@@ -89,6 +90,8 @@ for k in range(int(env.max_episode_length) - 2):
     px = robot.data.root_link_pos_w[:, 0]
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
+    if hasattr(env, "_eight_sign"):        # which way round this episode's 8 goes
+        sign_at_roll = torch.where(rolling & (sign_at_roll == 0), env._eight_sign, sign_at_roll)
     pxy = robot.data.root_link_pos_w[:, :2]
     if k > 0:
         path_len += torch.where(rolling, (pxy - last_xy).norm(dim=1), torch.zeros(N))
@@ -141,6 +144,6 @@ if TASK == "jumper.cartwheel_eight" and hasattr(env, "_eight_sign"):
         ok8 = ((alive[i] or why[i] == "time_out") and float(g_end[i]) < -0.9
                and math.degrees(float(abs_yaw[i])) >= 400 and abs(math.degrees(float(net_yaw[i]))) <= 90)
         eights += ok8
-    print("loop order per env (+1 left first, -1 right first; set at the last reset):",
-          [int(x) for x in env._eight_sign.tolist()])
+    print("loop order per env (+1 left first, -1 right first, 0 never reached the roll):",
+          [int(x) for x in sign_at_roll.tolist()])
     print(f"figure 8s (ran to the end upright, turned >= 400 deg in total, net within 90 deg): {eights}/{N}")
