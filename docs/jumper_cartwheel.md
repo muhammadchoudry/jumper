@@ -292,6 +292,28 @@ standing (`start_fraction`). From `straight_v1_model_15897`, 3000 rounds.
 - Checkpoint `tasks/jumper/cartwheel_ten_star/checkpoints/star_v1_model_18896.pt`;
   video `docs/media/cartwheel/cartwheel_ten_turns_star_legs.mp4`.
 
+### Down a hill (`jumper.cartwheel_hill`, Nov 5)
+The star task on an 8 deg downhill (gravity tilted toward +x, `slope_deg`;
+`traj_video.py` with `SLOPE_DEG=8` draws the real hill), `spokes_even` weight 5,
+kernel 0.25 rad. From `star_v1_model_18896`, 3000 rounds.
+
+A scripted rigid star (`tools/crab_trio/hill_roll.py`) falls over sideways within a
+second on any slope and spin: it balances on one tip at a time. At 4–6 rad/s
+its legs also buckle on landing (kp 20). So the policy has to balance it.
+
+| checkpoint | full | turns | legs short avg | spokes off even rms | hub speed |
+|---|---|---|---|---|---|
+| star_v1 on the hill | 1/4 | – | 3.5% | 32 deg | – |
+| **20600 (kept)** | **6/6** | 7.0–7.5 | **0.8–1.3%** | **24 deg** | ~1.3 m/s |
+| 21300 | 5/6 | 7.2–8.4 | 0.8–2.1% | 22–24 deg | ~1.4 m/s |
+| 21895 (last) | 4/6 | 6.4–7.6 | 0.7–1.7% | 21–23 deg | ~1.3 m/s |
+
+The star reads clearly on video, legs straight and spread, though not perfectly
+even. Mean hub speed of ~1.3 m/s on 8 deg is above the rigid-star estimate of
+1.0 m/s peak (stunt_calc). Checkpoint
+`tasks/jumper/cartwheel_hill/checkpoints/hill_v1_model_20600.pt`; video
+`docs/media/cartwheel/cartwheel_hill.mp4`.
+
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works
 on a curving path.
