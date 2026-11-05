@@ -42,17 +42,24 @@ policy = runner.get_inference_policy(device="cpu")
 obs = w.get_observations()
 robot = env.scene["robot"]
 frames, alive, steps = [], torch.ones(N, dtype=torch.bool), torch.zeros(N)
+xmax = robot.data.root_link_pos_w[:, 0].clone()
 for k in range(int(env.max_episode_length) - 2):
     with torch.no_grad():
         obs, rew, dones, extras = w.step(policy(obs))
     alive &= ~dones.bool()
     steps += alive.float()
+    xmax = torch.where(alive, torch.maximum(xmax, robot.data.root_link_pos_w[:, 0]), xmax)
     frames.append(np.concatenate([(robot.data.root_link_pos_w - env.scene.env_origins).numpy(),
                                   robot.data.root_link_quat_w.numpy(), robot.data.joint_pos.numpy()], 1))
     if not alive.any():
         break
 upright = (robot.data.projected_gravity_b[:, 2] < -0.9).float()   # ended on its feet
-best = int(torch.argmax(steps + 1000.0 * upright * alive.float() + 1e-3 * robot.data.root_link_pos_w[:, 0]))
+score = steps + 1000.0 * upright * alive.float() + 1e-3 * robot.data.root_link_pos_w[:, 0]
+if TASK.startswith("jumper.cartwheel_stunt"):     # furthest along the course; a clean finish beyond the gap wins
+    from tasks.jumper.cartwheel_stunt import course
+    score = 10.0 * xmax + 1000.0 * (upright * alive.float()) * (xmax > course.LAND_X + 0.2).float()
+best = int(torch.argmax(score))
 qs = np.array(frames)[: int(steps[best]) + 1, best]
 np.savez(out, qs=qs, names=np.array(robot.joint_names), dt=env.step_dt)
+print(f"furthest x per env: {[round(float(v), 2) for v in xmax]}")
 print(f"best env {best}: {int(steps[best])} steps ({steps[best] * env.step_dt:.2f} s); survivors {int(alive.sum())}/{N}")

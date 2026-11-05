@@ -28,7 +28,11 @@ COURSE = __import__("os").environ.get("COURSE") == "1"
 if COURSE:
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
     from tasks.jumper.cartwheel_stunt import course as _course
-    _course.add_course(spec, material="grid", contype=0, conaffinity=0)
+    # drawn 1 m wide, centred on the robot's path, instead of the simulated 6 m, so a
+    # side camera sees the hill, kicker and gap (the run stays inside the real width)
+    _course.HALF_WIDTH = 1.0
+    spec.add_material(name="ramp", rgba=[0.62, 0.52, 0.40, 1.0])     # plywood, against the dark pit floor
+    _course.add_course(spec, material="ramp", contype=0, conaffinity=0, y0=float(np.median(D["qs"][:, 1])))
 spec.worldbody.add_light(pos=[0, 0, 3], dir=[0, 0, -1], diffuse=[0.8, 0.8, 0.8])
 if SLOPE or COURSE:   # a long hill: a sun as well as the spot at the top
     spec.worldbody.add_light(pos=[0, 0, 10], dir=[0.3, 0.4, -1], diffuse=[0.55, 0.55, 0.6], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
@@ -57,6 +61,8 @@ for k in range(0, len(D["qs"]), step):
         cam.lookat[:] = [q[0], q[1], q[2] - 0.1 if far else 0.15]
         cam.distance = 1.4 if not far else 2.4; cam.azimuth = 110 if not far else 95
         cam.elevation = -12 if not far else -6
+        if COURSE:                    # side-on, so the hill, kicker and gap read
+            cam.lookat[:] = [q[0], q[1], q[2] - 0.1]; cam.distance = 4.0; cam.azimuth = 90; cam.elevation = -10
     r.update_scene(d, cam, opt); img = r.render(); wr.append_data(img)
     if k in picks: frames.append(img.copy())
 wr.close()

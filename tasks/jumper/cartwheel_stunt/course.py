@@ -53,19 +53,19 @@ LANDING.append((30.0, RUNOUT_Z))
 STAND_X = RUNOUT_X + 2.0                         # past here: tip down and stand
 
 
-def _segment_box(body, x1, z1, x2, z2, name, **kw):
+def _segment_box(body, x1, z1, x2, z2, name, y0=0.0, **kw):
     dx, dz = x2 - x1, z2 - z1
     L = math.hypot(dx, dz)
     nx, nz = -dz / L, dx / L                     # surface normal (up)
     cx, cz = (x1 + x2) / 2 - nx * THICK / 2, (z1 + z2) / 2 - nz * THICK / 2
     phi = -math.atan2(dz, dx)
     body.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX, size=[L / 2, HALF_WIDTH, THICK / 2],
-                  pos=[cx, 0.0, cz], quat=[math.cos(phi / 2), 0.0, math.sin(phi / 2), 0.0], **kw)
+                  pos=[cx, y0, cz], quat=[math.cos(phi / 2), 0.0, math.sin(phi / 2), 0.0], **kw)
 
 
-def add_course(spec: mujoco.MjSpec, body=None, material: str | None = None, **contact) -> None:
-    """Add the course to `spec` (on `body`, default the world), and drop any ground
-    plane to the bottom of the pit."""
+def add_course(spec: mujoco.MjSpec, body=None, material: str | None = None, y0: float = 0.0, **contact) -> None:
+    """Add the course to `spec` (on `body`, default the world), centred on y = y0
+    (renders only), and drop any ground plane to the bottom of the pit."""
     for g in spec.geoms:
         if g.type == mujoco.mjtGeom.mjGEOM_PLANE:
             g.pos = [g.pos[0], g.pos[1], PIT_Z]
@@ -79,15 +79,15 @@ def add_course(spec: mujoco.MjSpec, body=None, material: str | None = None, **co
     if material:
         kw["material"] = material
     for i, ((x1, z1), (x2, z2)) in enumerate(zip(TAKEOFF[:-1], TAKEOFF[1:])):
-        _segment_box(body, x1, z1, x2, z2, f"course_up_{i}", **kw)
+        _segment_box(body, x1, z1, x2, z2, f"course_up_{i}", y0, **kw)
     for i, ((x1, z1), (x2, z2)) in enumerate(zip(LANDING[:-1], LANDING[1:])):
-        _segment_box(body, x1, z1, x2, z2, f"course_down_{i}", **kw)
+        _segment_box(body, x1, z1, x2, z2, f"course_down_{i}", y0, **kw)
     # pillars under the kicker and the landing ramp, down to the pit
     for name, (x0, x1), top in (("course_pillar_kick", (LIP_X - 0.45, LIP_X), LIP_Z - 0.12),
                                 ("course_pillar_land", (LAND_X, LAND_X + 0.55), RUNOUT_Z - 0.05)):
         body.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX,
                       size=[(x1 - x0) / 2, HALF_WIDTH, (top - PIT_Z) / 2],
-                      pos=[(x0 + x1) / 2, 0.0, (top + PIT_Z) / 2], **kw)
+                      pos=[(x0 + x1) / 2, y0, (top + PIT_Z) / 2], **kw)
 
 
 def spec_fn(spec: mujoco.MjSpec) -> None:
