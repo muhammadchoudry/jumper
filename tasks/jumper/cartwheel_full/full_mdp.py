@@ -71,11 +71,13 @@ def gated_window(env, fn, start: str | None = None, end: str | None = None, **pa
 
 def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_fraction: float = 0.35,
                 phase_range: tuple[float, float] = (0.0, 0.95),
-                roll_window: tuple[float, float] | None = None, roll_fraction: float = 0.0, **kw) -> None:
+                roll_window: tuple[float, float] | None = None, roll_fraction: float = 0.0,
+                start_fraction: float = 0.0, **kw) -> None:
     """Reference-state spawn with a share of envs placed around the jump and landing:
     `focus_fraction` of them start between `focus_s[0]` s before the jump and
     `focus_s[1]` s after touch-down, `roll_fraction` (if `roll_window` is given) between
-    those fractions of the roll segment (e.g. a figure 8's crossing), the rest
+    those fractions of the roll segment (e.g. a figure 8's crossing), `start_fraction`
+    standing at the very start (so the trot keeps getting practice), the rest
     anywhere in `phase_range`."""
     from ..cartwheel.mdp.events import reset_from_reference_phase
     if env_ids is None:
@@ -97,6 +99,12 @@ def reset_focus(env, env_ids, focus_s: tuple[float, float] = (-0.3, 0.4), focus_
         if mid.any():
             reset_from_reference_phase(env, env_ids[mid], phase_range=(a, b), **kw)
         rest = rest & ~mid
+    if start_fraction > 0:
+        lo_u = focus_fraction + (roll_fraction if roll_window is not None else 0.0)
+        st = (u >= lo_u) & (u < lo_u + start_fraction)
+        if st.any():
+            reset_from_reference_phase(env, env_ids[st], phase_range=(0.0, 0.01), **kw)
+        rest = rest & ~st
     if rest.any():
         reset_from_reference_phase(env, env_ids[rest], phase_range=phase_range, **kw)
 
@@ -128,6 +136,44 @@ def legs_straight(env, sigma: float = 0.02, asset_cfg: SceneEntityCfg = _ROBOT) 
     """1 when every limb is fully extended hip to tip; falls off as knees bend
     (mean square shortening over the six limbs against sigma^2)."""
     e = leg_shortening(env, asset_cfg).clamp(min=0.0)
+    return torch.exp(-(e * e).mean(dim=1) / (sigma * sigma))
+
+
+#: where each tip points round the hub in the flat star (body x-y plane, degrees from
+#: body +x; LF, RF, LM, RM, LR, RR): six spokes evenly spaced 60 deg apart
+STAR_SPOKE_DEG = (30.0, -30.0, 90.0, -90.0, 150.0, -150.0)
+
+
+def _tips_body(env, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """(E, 6, 3) tip positions relative to the hub, in the body frame."""
+    from mjlab.utils.lab_api.math import quat_apply_inverse
+    robot: Entity = env.scene[asset_cfg.name]
+    leg_shortening(env, asset_cfg)                       # caches env._limb_ids
+    _, tips, _ = env._limb_ids
+    rel = robot.data.body_link_pos_w[:, tips] - robot.data.root_link_pos_w[:, None]
+    q = robot.data.root_link_quat_w[:, None].expand(-1, rel.shape[1], -1)
+    return quat_apply_inverse(q.reshape(-1, 4), rel.reshape(-1, 3)).reshape(rel.shape)
+
+
+def spoke_angle_error(env, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """(E, 6) how far (rad) each tip has swung round the hub, in the wheel plane, from
+    its evenly spaced star spoke. Tilting a straight leg out of the plane does not count."""
+    t = _tips_body(env, asset_cfg)
+    ang = torch.atan2(t[..., 1], t[..., 0])
+    target = torch.deg2rad(torch.tensor(STAR_SPOKE_DEG, device=t.device))
+    return torch.remainder(ang - target + torch.pi, 2 * torch.pi) - torch.pi
+
+
+def spoke_tilt(env, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """(E, 6) out-of-plane angle (rad) of each tip seen from the hub."""
+    t = _tips_body(env, asset_cfg)
+    return torch.atan2(t[..., 2], t[..., :2].norm(dim=-1))
+
+
+def spokes_even(env, sigma: float = 0.15, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+    """1 when all six tips sit on their evenly spaced star spokes (in the wheel plane);
+    falls off with the mean square swing against sigma^2 (0.15 rad ~ 9 deg)."""
+    e = spoke_angle_error(env, asset_cfg)
     return torch.exp(-(e * e).mean(dim=1) / (sigma * sigma))
 
 

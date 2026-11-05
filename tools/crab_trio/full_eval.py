@@ -58,6 +58,9 @@ tip_ids = [robot.body_names.index(b) for b in TIPS]
 spread_sum = torch.zeros(N)
 short_sum = torch.zeros(N)
 short_max = torch.zeros(N)
+swing_sq = torch.zeros(N)
+swing_max = torch.zeros(N)
+tilt_sq = torch.zeros(N)
 path_len = torch.zeros(N)
 sign_at_roll = torch.zeros(N)
 last_xy = robot.data.root_link_pos_w[:, :2].clone()
@@ -94,6 +97,12 @@ for k in range(int(env.max_episode_length) - 2):
     sh = leg_shortening(env).clamp(min=0)
     short_sum += torch.where(rolling, sh.mean(dim=1), torch.zeros(N))
     short_max = torch.where(rolling, torch.maximum(short_max, sh.max(dim=1).values), short_max)
+    from tasks.jumper.cartwheel_full.full_mdp import spoke_angle_error, spoke_tilt
+    sw = spoke_angle_error(env).abs()
+    swing_sq += torch.where(rolling, (sw * sw).mean(dim=1), torch.zeros(N))
+    swing_max = torch.where(rolling, torch.maximum(swing_max, sw.max(dim=1).values), swing_max)
+    tl = spoke_tilt(env)
+    tilt_sq += torch.where(rolling, (tl * tl).mean(dim=1), torch.zeros(N))
     px = robot.data.root_link_pos_w[:, 0]
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
@@ -144,6 +153,8 @@ for i in range(N):
           f"turned {math.degrees(float(abs_yaw[i])):4.0f} deg (net {math.degrees(float(net_yaw[i])):+4.0f})  spread {spread:.2f} m  "
           f"legs short {100 * float(short_sum[i] / spread_n[i]) if spread_n[i] > 0 else float('nan'):4.1f}% avg "
           f"{100 * float(short_max[i]):4.1f}% worst  "
+          f"spokes off even {math.degrees(math.sqrt(float(swing_sq[i] / spread_n[i]))) if spread_n[i] > 0 else float('nan'):4.1f} deg rms "
+          f"{math.degrees(float(swing_max[i])):4.0f} worst, tilt {math.degrees(math.sqrt(float(tilt_sq[i] / spread_n[i]))) if spread_n[i] > 0 else float('nan'):4.1f} deg rms  "
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")

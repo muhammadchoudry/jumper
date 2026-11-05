@@ -38,6 +38,7 @@ ACTION_SCALE = 0.7
 JUMP_MAX_ROTATION_ERROR = 1.6   # rad, during the jump only
 STAR_WEIGHT, STAR_SIGMA_SQ = 1.5, 0.15
 STRAIGHT_WEIGHT = 3.0
+EVEN_WEIGHT = 3.0
 
 
 def _gate(term: RewardTermCfg, phases: str, after_start: float = 0.0, weight: float | None = None,
@@ -66,7 +67,7 @@ def env_cfg(asset: Path | None = None, play: bool = False):
 
 
 def build(asset: Path | None = None, play: bool = False, motion: Path | None = None,
-          steer: bool | str = False, episode_s: float = 6.4, straight_legs: bool = False):
+          steer: bool | str = False, episode_s: float = 6.4, straight_legs: bool | str = False):
     """The task, optionally on another reference-5-style motion (`motion`), with the
     roll scored against the reference's heading and turn (`steer`; for a path that
     curves, e.g. a figure 8), and an episode of `episode_s` seconds."""
@@ -124,6 +125,16 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
         rewards["legs_straight"] = RewardTermCfg(func=F.gated, weight=STRAIGHT_WEIGHT,
                                                  params={"fn": F.legs_straight, "phases": "B", "after_start": 0.3})
         rewards["star_pose"] = _gate(r["ref_joint_pos"], "B", weight=0.3, sigma_sq=1.0)
+    if straight_legs == "even":
+        # straight AND evenly spread: each tip held on its star spoke, 60 deg apart in
+        # the wheel's plane (spokes_even); only tilting a straight leg out of the plane
+        # is left free. Kernels wide enough to give credit from where the policy starts
+        # (legs ~3.5% short, spokes ~35 deg rms off even)
+        rewards["legs_straight"].params["sigma"] = 0.05
+        rewards["spokes_even"] = RewardTermCfg(func=F.gated, weight=EVEN_WEIGHT,
+                                               params={"fn": F.spokes_even, "phases": "B", "after_start": 0.3,
+                                                       "sigma": 0.35})
+        rewards.pop("star_pose")
     rewards["undesired_contacts"].weight = -2.0
     rewards["action_rate_l2"].weight = -0.01 * (0.30 / ACTION_SCALE) ** 2
     cfg.rewards = rewards
@@ -160,6 +171,8 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
     if not play:
         ev.func = F.reset_focus
         ev.params = {**ev.params, "focus_s": (-0.3, 0.4), "focus_fraction": 0.35}
+        if straight_legs == "even":     # the straight-legs run forgot the trot mid-run
+            ev.params.update(focus_fraction=0.25, start_fraction=0.25)
 
     # reference spans 5.4 s after go (+0.3 s stand before it), plus time to settle
     cfg.episode_length_s = episode_s

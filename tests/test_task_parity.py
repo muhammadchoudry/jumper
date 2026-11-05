@@ -63,6 +63,7 @@ NOT_LOCOMOTION = {
     "jumper.cartwheel_runup",
     "jumper.cartwheel_ten",
     "jumper.cartwheel_ten_straight",
+    "jumper.cartwheel_ten_star",
     # Imitates a fixed choreography: no command, no gait prior, 22 joints instead
     # of 20, and its reward budget is the tracking terms rather than the velocity
     # skeleton's. Nothing it could agree with the four on would mean anything.
