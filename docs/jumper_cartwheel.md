@@ -267,6 +267,31 @@ Warm-started from `full_v3_model_12898`, 3000 rounds on the Mac (3 h 12 min).
 - Checkpoint `tasks/jumper/cartwheel_ten_straight/checkpoints/straight_v1_model_15897.pt`;
   video `docs/media/cartwheel/cartwheel_ten_turns_straight_legs.mp4`.
 
+### Straight and evenly spread (`jumper.cartwheel_ten_star`, Nov 4–5)
+Adds `spokes_even` (each tip's angle round the hub in the wheel plane vs its star
+spoke, 60 deg apart; kernel 0.35 rad, weight 3), `legs_straight` at sigma 0.05,
+drops `star_pose` (out-of-plane tilt left free), and starts 25% of practice
+standing (`start_fraction`). From `straight_v1_model_15897`, 3000 rounds.
+`full_eval` now also reports spokes off even (rms, worst) and tilt.
+
+| policy | full | turns | path | legs short avg / worst | spokes off even rms | tilt rms |
+|---|---|---|---|---|---|---|
+| v3 | 4/4 | 10.1–10.6 | 8.9–10.1 m | 5.6–6.1% / 40–61% | 25–27 deg | 23–24 deg |
+| straight_v1 | 5/6 | 8–10 | 5–8 m | 2.7–3.6% / 49–57% | 34–36 deg | 23–24 deg |
+| **star_v1 (18896)** | **4/6** | 8.0–8.5 | 4.4–6.0 m | **0.7–1.9% / 22–58%** | 27–29 deg | 20–23 deg |
+
+- Straight legs: done (under 2% short on average).
+- Even spread: not done. The video shows straight legs bunched, three or four
+  together on the ground side, rather than a six-point star. Spacing barely
+  moved (35 to 28 deg rms). Keeping several feet near the floor is how it keeps
+  rolling with locked knees.
+- It covers less ground per turn (about 0.7 m vs 0.95 m): more pivoting and
+  scuffing, less clean rolling.
+- The trot is erratic between checkpoints (round 18300: 2/6; round 17500: 5/6),
+  and works better with the policy's training noise on than off.
+- Checkpoint `tasks/jumper/cartwheel_ten_star/checkpoints/star_v1_model_18896.pt`;
+  video `docs/media/cartwheel/cartwheel_ten_turns_star_legs.mp4`.
+
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works
 on a curving path.
