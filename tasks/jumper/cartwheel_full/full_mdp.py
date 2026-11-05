@@ -34,12 +34,19 @@ def phase_mask(env, phases: str, command_name: str = "jump", after_start: float 
     _, _, _, tsg = ref_state(env, command_name)
     b0, b1 = _bounds(env)
     m = torch.zeros_like(tsg, dtype=torch.bool)
+    # a course (jumper.cartwheel_stunt_*) ends the roll by place, not only by time:
+    # past env._stand_x along x the env is in C
+    sx = getattr(env, "_stand_x", None)
+    past = (env.scene["robot"].data.root_link_pos_w[:, 0] > sx) & (tsg >= b0) if sx is not None else None
     if "A" in phases:
         m |= tsg < b0
     if "B" in phases:
-        m |= (tsg >= b0 + after_start) & (tsg < b1)
+        b = (tsg >= b0 + after_start) & (tsg < b1)
+        m |= b & ~past if past is not None else b
     if "C" in phases:
         m |= tsg >= b1
+        if past is not None:
+            m |= past
     return m
 
 

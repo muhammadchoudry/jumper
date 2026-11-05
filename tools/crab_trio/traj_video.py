@@ -3,6 +3,7 @@ on a checker floor.
 
   MUJOCO_GL=egl python tools/crab_trio/traj_video.py roll_traj.npz out.mp4
   TOPVIEW=1 ...                                   # a high fixed view over the whole path
+  COURSE=1 ...                                    # the ramp-jump course (tasks/jumper/cartwheel_stunt)
   SLOPE_DEG=8 ...                                 # a run simulated with gravity tilted toward +x
                                                   # (jumper.cartwheel_hill): drawn on a real hill
 """
@@ -23,8 +24,13 @@ tex = spec.add_texture(name="grid", type=mujoco.mjtTexture.mjTEXTURE_2D, builtin
 mat = spec.add_material(name="grid", texrepeat=[8, 8]); mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
 spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[40, 40, 0.1], material="grid", contype=0, conaffinity=0,
                         quat=QS)
+COURSE = __import__("os").environ.get("COURSE") == "1"
+if COURSE:
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
+    from tasks.jumper.cartwheel_stunt import course as _course
+    _course.add_course(spec, material="grid", contype=0, conaffinity=0)
 spec.worldbody.add_light(pos=[0, 0, 3], dir=[0, 0, -1], diffuse=[0.8, 0.8, 0.8])
-if SLOPE:   # a long hill: a sun as well as the spot at the top
+if SLOPE or COURSE:   # a long hill: a sun as well as the spot at the top
     spec.worldbody.add_light(pos=[0, 0, 10], dir=[0.3, 0.4, -1], diffuse=[0.55, 0.55, 0.6], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
 m = spec.compile()
 d = mujoco.MjData(m)
@@ -47,9 +53,10 @@ for k in range(0, len(D["qs"]), step):
     if TOP:                                   # high, fixed view over the whole path
         cam.lookat[:] = [cx, cy, 0.0]; cam.distance = TOP_DIST; cam.azimuth = 90; cam.elevation = -65
     else:
-        cam.lookat[:] = [q[0], q[1], q[2] - 0.1 if SLOPE else 0.15]
-        cam.distance = 1.4 if not SLOPE else 2.2; cam.azimuth = 110 if not SLOPE else 100
-        cam.elevation = -12 if not SLOPE else -8
+        far = SLOPE or COURSE
+        cam.lookat[:] = [q[0], q[1], q[2] - 0.1 if far else 0.15]
+        cam.distance = 1.4 if not far else 2.4; cam.azimuth = 110 if not far else 95
+        cam.elevation = -12 if not far else -6
     r.update_scene(d, cam, opt); img = r.render(); wr.append_data(img)
     if k in picks: frames.append(img.copy())
 wr.close()

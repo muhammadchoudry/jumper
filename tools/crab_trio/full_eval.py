@@ -73,6 +73,7 @@ why = [""] * N
 wheel = torch.zeros(N)
 prev = None
 x0 = robot.data.root_link_pos_w[:, 0].clone()
+x_max = x0.clone()
 x_roll0 = torch.full((N,), float("nan"))
 x_roll1 = torch.full((N,), float("nan"))
 for k in range(int(env.max_episode_length) - 2):
@@ -104,6 +105,7 @@ for k in range(int(env.max_episode_length) - 2):
     tl = spoke_tilt(env)
     tilt_sq += torch.where(rolling, (tl * tl).mean(dim=1), torch.zeros(N))
     px = robot.data.root_link_pos_w[:, 0]
+    x_max = torch.where(alive, torch.maximum(x_max, px), x_max)
     x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
     x_roll1 = torch.where(rolling, px, x_roll1)
     if hasattr(env, "_eight_sign"):        # which way round this episode's 8 goes
@@ -158,6 +160,13 @@ for i in range(N):
           f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")
+if TASK.startswith("jumper.cartwheel_stunt"):
+    from tasks.jumper.cartwheel_stunt import course
+    cleared = (x_max > course.LAND_X + 0.2)
+    print("furthest x per env (kicker lip %.2f, landing lip %.2f, stand from %.2f):" % (course.LIP_X, course.LAND_X, course.STAND_X),
+          [round(float(v), 2) for v in x_max])
+    print(f"cleared the gap: {int(cleared.sum())}/{N}; cleared it and finished upright: "
+          f"{sum(1 for i in range(N) if cleared[i] and (alive[i] or why[i] == 'time_out') and float(g_end[i]) < -0.9)}/{N}")
 if TASK == "jumper.cartwheel_eight" and hasattr(env, "_eight_sign"):
     eights = 0
     for i in range(N):
