@@ -245,6 +245,28 @@ tan(lean) = v · yaw rate / g, the way a rolling coin leans into a turn
   (`full_eval` / `full_record` had kept the mid-roll practice starts on until
   this check; fixed — the numbers above are from standing.)
 
+### Straight legs (`jumper.cartwheel_ten_straight`, Nov 4)
+Same reference as ten turns, plus a phase-B reward for leg length
+(`legs_straight`: shortening = 1 − |tip − hip| / straight length per limb,
+reward exp(−mean(e²)/0.02²), weight 3.0) and a weaker `star_pose` (0.3).
+Warm-started from `full_v3_model_12898`, 3000 rounds on the Mac (3 h 12 min).
+
+| policy | full from standing | turns | legs short avg / worst |
+|---|---|---|---|
+| v3 (start) | 4/4 | 10.0–10.7 | 5.6–7.2% / 40–55% |
+| round 13850 | 0/8 (trot forgotten) | – | from the jump: 3.2–4.5% / 30–46% |
+| **round 15897 (final)** | **5/6** | 8.0–10.2 | **2.2–5.1% / 35–58%** |
+
+- Mid-run the trot fell apart (every attempt `rotation_diverged` in the run-up),
+  then recovered by the end. Same forgetting as figure-8 try 3.
+- Legs are straighter on average (about 3.5% vs 6%), but each roll still has
+  moments where a leg bends hard (worst 35–58%). That is how it keeps the spin.
+  It rolls a little slower: 8–10 turns in the same time instead of 10–11.
+- The reward is too strict at 5% short (almost no credit), so progress is slow.
+  Next try: sigma 0.05, more standing starts, keep run-up terminations.
+- Checkpoint `tasks/jumper/cartwheel_ten_straight/checkpoints/straight_v1_model_15897.pt`;
+  video `docs/media/cartwheel/cartwheel_ten_turns_straight_legs.mp4`.
+
 `full_eval.py` now takes the task as a third argument and reports turns about the
 robot's own axle, path length, and heading change (total and net), so it works
 on a curving path.
