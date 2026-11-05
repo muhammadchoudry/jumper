@@ -23,6 +23,8 @@ the trot off the reference in its first second.
 
 from __future__ import annotations
 
+import math
+
 from pathlib import Path
 
 from mjlab.managers import TerminationTermCfg
@@ -67,7 +69,8 @@ def env_cfg(asset: Path | None = None, play: bool = False):
 
 
 def build(asset: Path | None = None, play: bool = False, motion: Path | None = None,
-          steer: bool | str = False, episode_s: float = 6.4, straight_legs: bool | str = False):
+          steer: bool | str = False, episode_s: float = 6.4, straight_legs: bool | str = False,
+          slope_deg: float = 0.0, even_weight: float | None = None, even_sigma: float = 0.35):
     """The task, optionally on another reference-5-style motion (`motion`), with the
     roll scored against the reference's heading and turn (`steer`; for a path that
     curves, e.g. a figure 8), and an episode of `episode_s` seconds."""
@@ -131,9 +134,9 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
         # is left free. Kernels wide enough to give credit from where the policy starts
         # (legs ~3.5% short, spokes ~35 deg rms off even)
         rewards["legs_straight"].params["sigma"] = 0.05
-        rewards["spokes_even"] = RewardTermCfg(func=F.gated, weight=EVEN_WEIGHT,
+        rewards["spokes_even"] = RewardTermCfg(func=F.gated, weight=even_weight or EVEN_WEIGHT,
                                                params={"fn": F.spokes_even, "phases": "B", "after_start": 0.3,
-                                                       "sigma": 0.35})
+                                                       "sigma": even_sigma})
         rewards.pop("star_pose")
     rewards["undesired_contacts"].weight = -2.0
     rewards["action_rate_l2"].weight = -0.01 * (0.30 / ACTION_SCALE) ** 2
@@ -176,6 +179,11 @@ def build(asset: Path | None = None, play: bool = False, motion: Path | None = N
 
     # reference spans 5.4 s after go (+0.3 s stand before it), plus time to settle
     cfg.episode_length_s = episode_s
+    if slope_deg:
+        # downhill toward +x: gravity tilted instead of the floor (the same physics; the
+        # floor stays z = 0, so the reference's positions and heights still hold)
+        a = math.radians(slope_deg)
+        cfg.sim.mujoco.gravity = (9.81 * math.sin(a), 0.0, -9.81 * math.cos(a))
     cfg.viewer.distance = 2.4
     return cfg
 
