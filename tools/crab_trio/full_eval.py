@@ -45,6 +45,9 @@ w = RslRlVecEnvWrapper(env, clip_actions=agent.clip_actions)
 runner = MjlabOnPolicyRunner(w, asdict(agent), device="cpu")
 runner.load(ckpt, load_cfg={"actor": True}, strict=True, map_location="cpu")
 policy = runner.get_inference_policy(device="cpu")
+if __import__("os").environ.get("STOCH") == "1":     # sample actions as in training (the policy's own noise)
+    _det = policy
+    policy = lambda o: _det(o, stochastic_output=True)  # noqa: E731
 obs = w.get_observations()
 robot = env.scene["robot"]
 r, _, _, _ = ref_state(env, "jump")

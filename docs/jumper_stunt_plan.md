@@ -76,3 +76,27 @@ This needs **about 2.0 m/s at the lip**. A rigid, evenly spread star gives only
 3. Scripted rigid-star check on the course, then RL on it: spawn rolling at the
    top, reward progress, clearing the gap, landing upright, and standing at the
    end.
+
+## Results: push off the lip, run 1 (`jumper.cartwheel_stunt_pop`, Nov 5)
+From `hill_v1_model_20600`, 3000 rounds (3 h 52 min on the Mac).
+- **It can do the whole stunt:** trot, jump into the star, down the hill, up the
+  kicker, over the 0.45 m gap, onto the landing ramp, and out onto the run-out.
+  Video: `docs/media/cartwheel/cartwheel_stunt_pop.mp4`; the gap is around 5.7–6.5 s
+  (`cartwheel_stunt_pop_jump.png`). The hub clears the kicker lip by ~14 cm.
+- **Not reliable:** about 1 in 16 attempts clears the gap and finishes.
+  - With deterministic actions, most attempts fall in the **trot** (rotation_diverged),
+    as in the star runs. With the policy's own action noise (`STOCH=1` in
+    full_eval / full_record) the trot mostly works.
+  - The next failure is **drifting off the side** (up to 2.9 m sideways on a 6 m course).
+  - Then **landing short**: many attempts reach the landing lip (x ≈ 5.72) and drop in.
+- Checkpoint `tasks/jumper/cartwheel_stunt_pop/checkpoints/pop_v1_model_23599.pt`.
+
+Fixes for a second run:
+1. Hand the trot and jump to the hill policy (6/6 from standing) and switch to
+   the stunt policy once it lands.
+2. A heading / stay-on-the-centre-line reward on the hill.
+3. Train more from spawns on the hill, so the kicker and gap get more practice.
+
+Renders: `traj_video.py` with `COURSE=1` uses a side camera. The course is drawn
+1.2 m wide and slid under the robot (the simulated course is 6 m wide and uniform
+across).

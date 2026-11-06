@@ -28,15 +28,17 @@ COURSE = __import__("os").environ.get("COURSE") == "1"
 if COURSE:
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
     from tasks.jumper.cartwheel_stunt import course as _course
-    # drawn 1 m wide, centred on the robot's path, instead of the simulated 6 m, so a
-    # side camera sees the hill, kicker and gap (the run stays inside the real width)
-    _course.HALF_WIDTH = 1.0
+    # drawn 1.2 m wide instead of the simulated 6 m, and slid sideways to stay under the
+    # robot frame by frame (it is the same all the way across, and the run stays inside the
+    # real width), so a side camera sees the hill, kicker and gap
+    _course.HALF_WIDTH = 0.6
     spec.add_material(name="ramp", rgba=[0.62, 0.52, 0.40, 1.0])     # plywood, against the dark pit floor
-    _course.add_course(spec, material="ramp", contype=0, conaffinity=0, y0=float(np.median(D["qs"][:, 1])))
+    _course.add_course(spec, material="ramp", contype=0, conaffinity=0, y0=0.0)
 spec.worldbody.add_light(pos=[0, 0, 3], dir=[0, 0, -1], diffuse=[0.8, 0.8, 0.8])
 if SLOPE or COURSE:   # a long hill: a sun as well as the spot at the top
     spec.worldbody.add_light(pos=[0, 0, 10], dir=[0.3, 0.4, -1], diffuse=[0.55, 0.55, 0.6], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
 m = spec.compile()
+COURSE_GEOMS = [i for i in range(m.ngeom) if (m.geom(i).name or "").startswith("course_")] if COURSE else []
 d = mujoco.MjData(m)
 qa = [m.jnt_qposadr[m.joint(str(n)).id] for n in D["names"]]
 r = mujoco.Renderer(m, 480, 854); cam = mujoco.MjvCamera(); opt = mujoco.MjvOption()
@@ -53,6 +55,8 @@ for k in range(0, len(D["qs"]), step):
         q[0:3] = RS @ q[0:3]
         qq = np.zeros(4); mujoco.mju_mulQuat(qq, QS, q[3:7]); q[3:7] = qq
     d.qpos[:] = 0; d.qpos[0:3] = q[0:3]; d.qpos[3:7] = q[3:7]; d.qpos[qa] = q[7:]
+    for _g in COURSE_GEOMS:
+        m.geom_pos[_g, 1] = q[1]
     mujoco.mj_forward(m, d)
     if TOP:                                   # high, fixed view over the whole path
         cam.lookat[:] = [cx, cy, 0.0]; cam.distance = TOP_DIST; cam.azimuth = 90; cam.elevation = -65
