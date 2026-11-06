@@ -12,31 +12,37 @@ from . import course
 _ROBOT = SceneEntityCfg("robot")
 
 
+def _c(env) -> course.Course:
+    return getattr(env, "_course", course.DEFAULT)
+
+
 def _hub(env):
     return env.scene["robot"].data.root_link_pos_w
 
 
-def reset_course(env, env_ids, **kw) -> None:
-    """reset_focus, plus the place where the roll ends (phase C by place, full_mdp.phase_mask)."""
-    env._stand_x = course.STAND_X
+def reset_course(env, env_ids, course_name: str = "default", **kw) -> None:
+    """reset_focus, plus which course and where its roll ends (phase C by place,
+    full_mdp.phase_mask)."""
+    env._course = course.COURSES[course_name]
+    env._stand_x = env._course.STAND_X
     F.reset_focus(env, env_ids, **kw)
 
 
 def hub_low_course(env, min_height: float = 0.15) -> torch.Tensor:
     """Hub less than min_height above the course under it (legs folded / tumbling)."""
     p = _hub(env)
-    return p[:, 2] - course.surface_z(p[:, 0]) < min_height
+    return p[:, 2] - _c(env).surface_z(p[:, 0]) < min_height
 
 
 def fell_in_gap(env) -> torch.Tensor:
     """Hub below the landing lip while over the gap or short of the landing ramp."""
     p = _hub(env)
-    over = (p[:, 0] > course.LIP_X - 0.15) & (p[:, 0] < course.LAND_X + 0.25)
-    return over & (p[:, 2] < course.LAND_Z - 0.15)
+    over = (p[:, 0] > _c(env).LIP_X - 0.15) & (p[:, 0] < _c(env).LAND_X + 0.25)
+    return over & (p[:, 2] < _c(env).LAND_Z - 0.15)
 
 
 def off_course(env) -> torch.Tensor:
-    return _hub(env)[:, 1].abs() > course.HALF_WIDTH - 0.1
+    return _hub(env)[:, 1].abs() > _c(env).half_width - 0.1
 
 
 def cleared_gap(env) -> torch.Tensor:
@@ -46,11 +52,17 @@ def cleared_gap(env) -> torch.Tensor:
     prev = getattr(env, "_course_prev_x", None)
     if prev is None or prev.shape != x.shape:
         prev = x.clone()
-    line = course.LAND_X + 0.2
-    hit = (prev < line) & (x >= line) & (p[:, 2] - course.surface_z(x) > 0.1)
+    line = _c(env).LAND_X + 0.2
+    hit = (prev < line) & (x >= line) & (p[:, 2] - _c(env).surface_z(x) > 0.1)
     # a reset puts x back near the start: never counts as a crossing
     env._course_prev_x = x.clone()
     return hit.float()
+
+
+def centre_line(env, sigma: float = 0.5) -> torch.Tensor:
+    """1 on the course's centre line (y = 0), falling off sideways against sigma (m)."""
+    y = _hub(env)[:, 1]
+    return torch.exp(-(y * y) / (sigma * sigma))
 
 
 def outside_x(env, term, x0: float, x1: float, **params) -> torch.Tensor:
@@ -60,4 +72,4 @@ def outside_x(env, term, x0: float, x1: float, **params) -> torch.Tensor:
     return term(env, **params) * ((x < x0) | (x > x1)).float()
 
 
-__all__ = ["cleared_gap", "fell_in_gap", "hub_low_course", "off_course", "outside_x", "reset_course"]
+__all__ = ["centre_line", "cleared_gap", "fell_in_gap", "hub_low_course", "off_course", "outside_x", "reset_course"]

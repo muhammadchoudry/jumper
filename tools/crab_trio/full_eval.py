@@ -164,7 +164,8 @@ for i in range(N):
           f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
 print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")
 if TASK.startswith("jumper.cartwheel_stunt"):
-    from tasks.jumper.cartwheel_stunt import course
+    from tasks.jumper.cartwheel_stunt import course as _cm
+    course = _cm.for_task(TASK)
     cleared = (x_max > course.LAND_X + 0.2)
     print("furthest x per env (kicker lip %.2f, landing lip %.2f, stand from %.2f):" % (course.LIP_X, course.LAND_X, course.STAND_X),
           [round(float(v), 2) for v in x_max])

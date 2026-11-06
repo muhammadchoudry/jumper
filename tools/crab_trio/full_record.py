@@ -59,7 +59,8 @@ for k in range(int(env.max_episode_length) - 2):
 upright = (robot.data.projected_gravity_b[:, 2] < -0.9).float()   # ended on its feet
 score = steps + 1000.0 * upright * alive.float() + 1e-3 * robot.data.root_link_pos_w[:, 0]
 if TASK.startswith("jumper.cartwheel_stunt"):     # furthest along the course; a clean finish beyond the gap wins
-    from tasks.jumper.cartwheel_stunt import course
+    from tasks.jumper.cartwheel_stunt import course as _cm
+    course = _cm.for_task(TASK)
     score = 10.0 * xmax + 1000.0 * (upright * alive.float()) * (xmax > course.LAND_X + 0.2).float()
 best = int(torch.argmax(score))
 qs = np.array(frames)[: int(steps[best]) + 1, best]

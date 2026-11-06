@@ -48,11 +48,13 @@ def _spawn_end_fraction() -> float:
     return t / float(D["t"][-1])
 
 
-def build_stunt(asset: Path | None, play: bool, variant: str):
+def build_stunt(asset: Path | None, play: bool, variant: str, course_name: str = "default",
+                centre_weight: float = 0.0):
+    C = course.COURSES[course_name]
     cfg = build(asset=asset, play=play, motion=REF_NPZ, steer=False, episode_s=EPISODE_S, straight_legs="even",
                 even_weight=5.0, even_sigma=0.25)
     cfg.scene.env_spacing = 0.0
-    cfg.scene.spec_fn = course.spec_fn
+    cfg.scene.spec_fn = C.spec_fn
 
     R = cfg.rewards
     for k in ("ref_joint_pos", "ref_base_height", "ref_base_ori"):
@@ -60,7 +62,7 @@ def build_stunt(asset: Path | None, play: bool, variant: str):
     R["roll_forward"].params["max_rate"] = 10.0
     R["travel_forward"].params["max_speed"] = 3.0
     if variant == "pop":
-        x0, x1 = course.LIP_X - 0.45, course.LAND_X + 0.1
+        x0, x1 = C.LIP_X - 0.45, C.LAND_X + 0.1
         for k in ("legs_straight", "spokes_even"):
             p = R[k].params
             inner = {kk: v for kk, v in p.items() if kk not in ("fn", "phases", "after_start")}
@@ -73,6 +75,9 @@ def build_stunt(asset: Path | None, play: bool, variant: str):
     else:
         raise ValueError(variant)
     R["cleared_gap"] = RewardTermCfg(func=S.cleared_gap, weight=1000.0)
+    if centre_weight:     # run 1 drifted up to 2-3 m sideways on the way down
+        R["centre_line"] = RewardTermCfg(func=F.gated, weight=centre_weight,
+                                         params={"fn": S.centre_line, "phases": "B", "after_start": 0.0, "sigma": 0.5})
 
     T = cfg.terminations
     T["hub_too_low"] = TerminationTermCfg(func=F.gated_done, params={"fn": S.hub_low_course, "phases": "B",
@@ -82,6 +87,7 @@ def build_stunt(asset: Path | None, play: bool, variant: str):
 
     ev = cfg.events["reset_from_reference"]
     ev.func = S.reset_course
+    ev.params["course_name"] = course_name
     if not play:
         ev.params["phase_range"] = (0.0, _spawn_end_fraction())
     cfg.viewer.distance = 3.0

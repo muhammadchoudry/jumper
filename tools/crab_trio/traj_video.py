@@ -3,7 +3,7 @@ on a checker floor.
 
   MUJOCO_GL=egl python tools/crab_trio/traj_video.py roll_traj.npz out.mp4
   TOPVIEW=1 ...                                   # a high fixed view over the whole path
-  COURSE=1 ...                                    # the ramp-jump course (tasks/jumper/cartwheel_stunt)
+  COURSE=1|long ...                               # a ramp-jump course (tasks/jumper/cartwheel_stunt)
   SLOPE_DEG=8 ...                                 # a run simulated with gravity tilted toward +x
                                                   # (jumper.cartwheel_hill): drawn on a real hill
 """
@@ -24,16 +24,17 @@ tex = spec.add_texture(name="grid", type=mujoco.mjtTexture.mjTEXTURE_2D, builtin
 mat = spec.add_material(name="grid", texrepeat=[8, 8]); mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "grid"
 spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[40, 40, 0.1], material="grid", contype=0, conaffinity=0,
                         quat=QS)
-COURSE = __import__("os").environ.get("COURSE") == "1"
+_cname = __import__("os").environ.get("COURSE", "")
+COURSE = _cname in ("1", "default", "long")
 if COURSE:
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
-    from tasks.jumper.cartwheel_stunt import course as _course
+    from tasks.jumper.cartwheel_stunt import course as _cm
+    _course = _cm.COURSES["long" if _cname == "long" else "default"]
     # drawn 1.2 m wide instead of the simulated 6 m, and slid sideways to stay under the
     # robot frame by frame (it is the same all the way across, and the run stays inside the
     # real width), so a side camera sees the hill, kicker and gap
-    _course.HALF_WIDTH = 0.6
     spec.add_material(name="ramp", rgba=[0.62, 0.52, 0.40, 1.0])     # plywood, against the dark pit floor
-    _course.add_course(spec, material="ramp", contype=0, conaffinity=0, y0=0.0)
+    _course.add_course(spec, material="ramp", contype=0, conaffinity=0, y0=0.0, half_width=0.6)
 spec.worldbody.add_light(pos=[0, 0, 3], dir=[0, 0, -1], diffuse=[0.8, 0.8, 0.8])
 if SLOPE or COURSE:   # a long hill: a sun as well as the spot at the top
     spec.worldbody.add_light(pos=[0, 0, 10], dir=[0.3, 0.4, -1], diffuse=[0.55, 0.55, 0.6], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
