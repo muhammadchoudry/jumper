@@ -100,3 +100,21 @@ Fixes for a second run:
 Renders: `traj_video.py` with `COURSE=1` uses a side camera. The course is drawn
 1.2 m wide and slid under the robot (the simulated course is 6 m wide and uniform
 across).
+
+## Results: roll faster, run 1 (`jumper.cartwheel_stunt_fast`, Nov 5)
+From `hill_v1_model_20600`, 3000 rounds (4 h on the Mac). Best checkpoint: round
+22300, not the last.
+- **Much more reliable than the pop version.**
+  - From standing, with deterministic actions, it trots and jumps every time.
+  - It clears the gap in 6/8 and 9/16 attempts.
+  - It clears the gap and finishes standing upright in about 3/16.
+- **The physics matches the plan.** In the run on video it reaches the lip at
+  **2.2 m/s** (the plan needed ~2.0). The hub is 21 cm above the kicker lip and
+  23 cm above the landing lip as it crosses. It lands on the ramp, rolls out, and
+  stands up on the run-out.
+  Video: `docs/media/cartwheel/cartwheel_stunt_fast.mp4`; frames 3.8–5.0 s plus the
+  end in `cartwheel_stunt_fast_jump.png`.
+- **Where the rest fail:** drifting off the side (up to 2 m sideways in the
+  good run), collapsing or tipping on the run-out, and a few short landings.
+- Later checkpoints (23000, 23599) got worse: 0–3 clears out of 8.
+- Checkpoint `tasks/jumper/cartwheel_stunt_fast/checkpoints/fast_v1_model_22300.pt`.
