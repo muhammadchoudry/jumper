@@ -281,12 +281,31 @@ def _finale(t, u):
     return eye, np.array([h[0] - 0.8 * ease(u), Y0, h[2] - 0.1]), 45
 
 
+GAP_MID = 0.5 * (C.LIP_X + C.LAND_X)
+T_APEX = T_LIP + float(np.argmax(QS[int(T_LIP / DT):int(T_LAND / DT), 2]) * DT)
+
+
+def _side(t, u):       # dead-on profile through a long lens: the whole gap in one fixed frame
+    return np.array([GAP_MID, Y0 - 6.0, C.LIP_Z + 0.5]), np.array([GAP_MID, Y0, C.LIP_Z - 0.08]), 14
+
+
+def _top(t, u):        # straight down over the fire, drifting a little with the crab
+    h = hub(t)
+    x = 0.7 * GAP_MID + 0.3 * h[0]
+    return np.array([x - 0.02, Y0, C.LIP_Z + 3.2]), np.array([x, Y0, C.LIP_Z - 0.3]), 30
+
+
 SHOTS = [
     ("establish", 0.0, 2.4, 1.0, _establish, None),
     ("edge", 2.4, 3.6, 1.0, _edge, None),
     ("chase", 3.6, T_LIP - 0.12, 1.0, _chase, None),
     ("pit", T_LIP - 0.12, T_LAND + 0.15, 4.0, _pit, "4x SLOW MOTION"),
-    ("front", T_LIP - 0.18, T_LAND + 0.1, 3.0, _front, "REPLAY"),
+    # the jump again, from each axis, like an action replay
+    ("front", T_LIP - 0.18, T_LAND + 0.1, 3.0, _front, "REPLAY  ·  FRONT"),
+    ("side_in", T_LIP - 0.2, T_APEX - 0.05, 2.5, _side, "REPLAY  ·  SIDE"),
+    ("side_apex", T_APEX - 0.05, T_APEX + 0.05, 12.0, _side, "REPLAY  ·  SIDE"),   # time almost stops at the top
+    ("side_out", T_APEX + 0.05, T_LAND + 0.15, 2.5, _side, "REPLAY  ·  SIDE"),
+    ("top", T_LIP - 0.2, T_LAND + 0.15, 2.5, _top, "REPLAY  ·  TOP"),
     ("landing", T_LAND - 0.05, min(T_LAND + 2.0, T_END), 1.0, _landing, None),
     ("finale", min(T_LAND + 2.0, T_END - 1.0), T_END, 1.0, _finale, None),
 ]
@@ -412,7 +431,9 @@ def main():
         print(f"shot {name}: {n} frames", flush=True)
     if STILLS:
         wr.close()
-        Image.fromarray(np.vstack([np.hstack(sheet[:4]), np.hstack((sheet[4:] + [np.zeros_like(sheet[0])] * 4)[:4])])
+        rows = (len(sheet) + 3) // 4
+        sheet += [np.zeros_like(sheet[0])] * (rows * 4 - len(sheet))
+        Image.fromarray(np.vstack([np.hstack(sheet[4 * i:4 * i + 4]) for i in range(rows)])
                         ).save(str(OUT).replace(".mp4", "_stills.png"))
         return
     # end card over a held, darkened last frame
@@ -495,6 +516,11 @@ def score(path, total, marks, launch):
         thump = np.sin(2 * np.pi * 50 * kk) * np.exp(-25 * kk)
         add(0.35 * thump, hb)
         add(0.22 * thump, hb + 0.22)
+    # a reversed whoosh into each replay angle
+    for nm in ("front", "side_in", "top"):
+        k = np.arange(int(0.45 * SR)) / SR
+        wh = rng.standard_normal(len(k)) * (k / 0.45) ** 2
+        add(0.18 * np.convolve(wh, np.ones(25) / 25, "same"), marks[nm] - 0.45)
     # landing boom (the replay ends just after it, the landing shot starts with it)
     k = np.arange(int(2.0 * SR)) / SR
     add(0.7 * np.sin(2 * np.pi * (38 + 80 * np.exp(-15 * k)) * k) * np.exp(-2.5 * k)
