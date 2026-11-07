@@ -325,3 +325,8 @@ on a curving path.
 4. Optional looks pass: reward straighter, more spread legs, closer to the star
    pictured originally.
 5. Parked: folded-leg rolling (`NOTES_folded_leg_rolling.md`).
+
+## Reproducing the videos
+
+Every video in `docs/media/cartwheel/`, the recorded rollout it was rendered from
+(`docs/media/cartwheel/traj/`) and the exact commands: `docs/media/cartwheel/README.md`.
