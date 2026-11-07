@@ -118,3 +118,33 @@ From `hill_v1_model_20600`, 3000 rounds (4 h on the Mac). Best checkpoint: round
   good run), collapsing or tipping on the run-out, and a few short landings.
 - Later checkpoints (23000, 23599) got worse: 0–3 clears out of 8.
 - Checkpoint `tasks/jumper/cartwheel_stunt_fast/checkpoints/fast_v1_model_22300.pt`.
+
+## Results: longer gap, run 1 (`jumper.cartwheel_stunt_long`, Nov 6)
+Course `course.LONG`:
+- an 18 deg hill;
+- a **0.75 m gap** (was 0.45 m; the crab is 0.6 m across);
+- the landing lip 0.4 m below the kicker lip;
+- a 45 deg landing ramp easing to 20 deg before the run-out.
+
+Also a centre-line reward. From `fast_v1_model_22300`, 3000 rounds (~3.5 h).
+
+Why the drop: run 1 left the 14 cm kicker almost level (the kicker is shorter than
+a spoke step, so it barely turns the wheel upward). From 0.21 m above the lip at
+2.2 m/s, the hub clears G when 0.21 + drop − g/2·(G/v)² ≥ ~0.1. That gives
+G ≤ 0.46 m at a 0.1 m drop and ≈ 0.71 m at 0.4 m. The extra height comes from the
+drop; the steeper hill buys speed.
+
+| | 0.45 m gap (fast run 1) | **0.75 m gap (long run 1)** |
+|---|---|---|
+| Clears the gap, deterministic | 9/16 | 5/16 |
+| Clears the gap, with action noise | – | 10/16 (6/8 in a second test) |
+| Clears it and ends standing | ~3/16 | 1–2 of 8 |
+| Speed at the lip | 2.2 m/s | **2.8 m/s** |
+| Hub over the landing lip | 23 cm | 23 cm |
+| Worst sideways drift (video run) | 2.0 m | 1.0 m |
+
+Video: `docs/media/cartwheel/cartwheel_stunt_long.mp4`. The jump is at ~4.3–4.8 s;
+frames in `cartwheel_stunt_long_jump.png`. In this run it clears and rolls out but
+ends sprawled low on the run-out rather than standing. The last checkpoint was
+the best of 23300–25299. Checkpoint
+`tasks/jumper/cartwheel_stunt_long/checkpoints/long_v1_model_25299.pt`.
