@@ -3,7 +3,7 @@
 All six limbs straight and spread in the plane of the body (a six-spoke star,
 60 degrees apart); the crab tips onto its edge and rolls 360 degrees
 head-over-tail like a wheel, then tips back onto its feet. Reference
-`ref/cartwheel_flat_crab.npz` from `tools/crab_trio/cartwheel_ref2.py`; the
+`ref/cartwheel_flat_crab.npz` from `tools/cartwheel/refs/cartwheel_ref2.py`; the
 training scheme is `jumper.cartwheel`'s.
 """
 

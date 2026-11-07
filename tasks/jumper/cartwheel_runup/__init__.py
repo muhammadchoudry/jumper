@@ -4,7 +4,7 @@ The crab trots forward (a physics recording of the trained `jumper.posture`
 walking policy), tips onto its edge while still moving, spreads into the flat
 six-spoke star and rolls one full turn, then stands. The run-up gives the wheel
 the momentum reference 2 lacked when it started from a dead stop on its edge.
-Reference `ref/cartwheel_runup.npz` from `tools/crab_trio/cartwheel_ref3.py`.
+Reference `ref/cartwheel_runup.npz` from `tools/cartwheel/refs/cartwheel_ref3.py`.
 """
 
 from __future__ import annotations

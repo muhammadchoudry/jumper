@@ -292,19 +292,12 @@ def _eight_profile_t(device):
     """(s grid, heading, curvature per unit s) for the crossing-diagonals 8."""
     global _EIGHT_PROFILE
     if _EIGHT_PROFILE is None or _EIGHT_PROFILE[0].device != torch.device(device):
-        import importlib.util
         import pathlib
-        p = pathlib.Path(__file__).resolve().parents[3] / "tools/crab_trio/cartwheel_ref5.py"
-        spec = importlib.util.spec_from_file_location("_cartwheel_ref5", p)
-        # cartwheel_ref5 imports its siblings by name: put tools/crab_trio on the path for the load
-        import sys
-        sys.path.insert(0, str(p.parent))
-        try:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            s, psi = mod._eight_profile()
-        finally:
-            sys.path.remove(str(p.parent))
+        import numpy as np
+        # written by tools/cartwheel/refs/cartwheel_ref5.py with the 8's reference
+        f = pathlib.Path(__file__).resolve().parents[1] / "cartwheel_eight/ref/eight_profile.npz"
+        d = np.load(f)
+        s, psi = d["s"], d["psi"]
         s = torch.as_tensor(s, dtype=torch.float32, device=device)
         psi = torch.as_tensor(psi, dtype=torch.float32, device=device)
         kappa = torch.gradient(psi, spacing=(s,))[0]

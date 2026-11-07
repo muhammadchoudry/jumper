@@ -3,7 +3,7 @@
 The robot crouches with its legs fanned, pushes off sideways, snaps its limbs out
 straight into a six-spoke "star" and rolls 360 degrees over them -- legs, claws
 over the top, legs -- back onto its feet. The reference
-(`ref/cartwheel_flat.npz`, authored by `tools/crab_trio/cartwheel_ref.py`) is
+(`ref/cartwheel_flat.npz`, authored by `tools/cartwheel/refs/cartwheel_ref.py`) is
 kinematic; the policy learns residual corrections that make it work under
 physics. Built on `jumper.jump`'s reference-tracking scheme; see `env_cfg.py`.
 """

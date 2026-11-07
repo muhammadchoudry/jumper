@@ -5,9 +5,11 @@ Robotics crab robot challenge (Oct 30 – Nov 30, 2026): a run-up, a sideways ju
 onto the legs, a roll on edge like a wheel, and a landing back on its feet, all
 within the motors' limits (1.7464 N·m, kp 20, kd 0.5, 200 Hz control).
 
-Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tools are in
-`tools/crab_trio/`, tasks in `tasks/jumper/cartwheel*`, videos in
-`docs/media/cartwheel/`.
+Branch `cartwheel` of github.com/muhammadchoudry/jumper. Tasks are in
+`tasks/jumper/cartwheel*`, tools in `tools/cartwheel/` (map:
+`tools/cartwheel/README.md`), training scripts in `scripts/cartwheel/`, and videos in
+`docs/media/cartwheel/`. **Every training run and how to repeat it:
+`docs/cartwheel_training.md`.**
 
 ## Status (Nov 3, 2026, morning)
 
@@ -40,7 +42,7 @@ carry the load along the bone, so the pose fits within the motor limits, but:
 - Coasting a full turn would need ~1.9 J added per spoke (~11 J per turn). The
   run-up carries ~0.75 J.
 
-Measured (`tools/crab_trio/limb_wheel.py hand`, physics, sideways balance held by
+Measured (`tools/cartwheel/physics/limb_wheel.py hand`, physics, sideways balance held by
 an invisible hand): the rigid star started at 2.4 rad/s **stops after ~25°**. This
 is why every reference-tracking run on references 1–3 failed 60–120° into the
 roll.
@@ -67,7 +69,7 @@ pull toward the star; shell contact −2.
   like a coin with a wobbling axle: ~1800° of spin per episode while the wheel's
   orientation went back and forth, hub at 0.10–0.18 m, 0.1–0.7 m of travel. Video:
   `cartwheel_roll_round2300.mp4`. Kept as a parked alternative in
-  `tools/crab_trio/NOTES_folded_leg_rolling.md`.
+  `tools/cartwheel/NOTES_folded_leg_rolling.md`.
 - **Run 2 (commit de983e5):** roll measured about the world axle (only rolling
   forward produces it), travel weight 3, episode ends if the hub drops below
   0.15 m. 4000 rounds on the Mac mini (CPU, 1024 envs, ~4.5 h); scores flattened
@@ -97,9 +99,10 @@ check could not see; fixed with a full-rotation termination (commit 2bf722a).
 
 ## Reproduce
 
-Training on a Mac mini (CPU): `~/Projects/jumper-cartwheel-train.sh <task> <envs>
-<iterations>` clones or pulls this branch into `~/Projects/jumper`, builds the
-venv, and runs
+Superseded by `docs/cartwheel_training.md` (`scripts/cartwheel/setup.sh`,
+`train.sh`, `runs.py`). Originally: training on a Mac mini (CPU),
+`~/Projects/jumper-cartwheel-train.sh <task> <envs> <iterations>` cloned or pulled
+this branch into `~/Projects/jumper`, built the venv, and ran
 
 ```bash
 python scripts/train.py --task jumper.cartwheel_roll --backend native --device cpu \
@@ -109,12 +112,12 @@ python scripts/train.py --task jumper.cartwheel_roll --backend native --device c
 Evaluate and render a checkpoint (from the repo root):
 
 ```bash
-python tools/crab_trio/roll_eval.py tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt
-python tools/crab_trio/roll_record.py tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt x
-MUJOCO_GL=egl python tools/crab_trio/traj_video.py /root/scratch/roll_traj.npz roll.mp4
+python -m tools.cartwheel.eval.roll_eval tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt
+python -m tools.cartwheel.eval.roll_record tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt roll_traj.npz
+MUJOCO_GL=egl python -m tools.cartwheel.render.traj_video roll_traj.npz roll.mp4
 ```
 
-Regenerate the references: `cd tools/crab_trio && python cartwheel_ref4.py`
+Regenerate the references: `python -m tools.cartwheel.refs.cartwheel_ref4`
 (likewise `roll_loop_ref.py`, `record_runup.py`).
 
 ## In progress: `jumper.cartwheel_full`
@@ -134,7 +137,7 @@ Started from the rolling policy with `--checkpoint
 tasks/jumper/cartwheel_roll/checkpoints/roll_v2_model_3999.pt`; the iteration
 count continues from 3999. On the Mac mini, run with
 `~/Projects/jumper-cartwheel-full.command`. Evaluate from a standing start with
-`python tools/crab_trio/full_eval.py <model_N.pt>`: per env, how far through the
+`python -m tools.cartwheel.eval.full_eval <model_N.pt>`: per env, how far through the
 timeline it got, turns while rolling, and whether it ends upright.
 
 ### Results: `jumper.cartwheel_full`
@@ -297,7 +300,7 @@ The star task on an 8 deg downhill (gravity tilted toward +x, `slope_deg`;
 `traj_video.py` with `SLOPE_DEG=8` draws the real hill), `spokes_even` weight 5,
 kernel 0.25 rad. From `star_v1_model_18896`, 3000 rounds.
 
-A scripted rigid star (`tools/crab_trio/hill_roll.py`) falls over sideways within a
+A scripted rigid star (`tools/cartwheel/physics/hill_roll.py`) falls over sideways within a
 second on any slope and spin: it balances on one tip at a time. At 4–6 rad/s
 its legs also buckle on landing (kp 20). So the policy has to balance it.
 

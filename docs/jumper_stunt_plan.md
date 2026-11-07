@@ -2,7 +2,7 @@
 
 Goal: the crab cartwheels down a hill, up a kicker ramp, flies over a gap and lands
 on a landing ramp on the other side (Evel Knievel style), with real physics.
-Numbers from `tools/crab_trio/stunt_calc.py`; to be checked in simulation before
+Numbers from `tools/cartwheel/physics/stunt_calc.py`; to be checked in simulation before
 building the course.
 
 ## The crab as a wheel

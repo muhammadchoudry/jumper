@@ -5,7 +5,7 @@ sideways -- left legs drive harder -- snapping into the flat six-spoke star in
 the air and landing on its right edge already rolling forward. One full turn,
 then it stands. The jump supplies the ~4 J of lift that tipping up from the
 trot alone (references 2 and 3) could not.
-Reference `ref/cartwheel_jump.npz` from `tools/crab_trio/cartwheel_ref4.py`.
+Reference `ref/cartwheel_jump.npz` from `tools/cartwheel/refs/cartwheel_ref4.py`.
 """
 
 from __future__ import annotations

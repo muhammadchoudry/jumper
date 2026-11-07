@@ -1,0 +1,182 @@
+"""Evaluate a jumper.cartwheel_full checkpoint from the start of the motion.
+
+Each env starts standing (play-style spawn at the reference's beginning), trots,
+jumps, rolls, and should end on its feet. Per env: how far through the timeline it
+got, wheel turns while rolling (by orientation), travel, whether it ended upright,
+and its final speed.
+
+  python -m tools.cartwheel.eval.full_eval <model_N.pt> [num_envs] [task]     # from the repo root
+
+(task: jumper.cartwheel_full, jumper.cartwheel_ten or jumper.cartwheel_eight)
+"""
+import math
+import sys
+from dataclasses import asdict
+
+import torch
+from mjrl.backend import resolve
+from mjrl.backend.select import use_backend
+
+import tasks
+
+ckpt = sys.argv[1]
+N = int(sys.argv[2]) if len(sys.argv) > 2 else 16
+TASK = sys.argv[3] if len(sys.argv) > 3 else "jumper.cartwheel_full"
+res = resolve(backend="native", device="cpu", num_envs=N, cpu_threads=2, strip_visual=None, training=False)
+use_backend(res)
+from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
+from mjlab.rl import RslRlVecEnvWrapper  # noqa: E402
+from mjlab.rl.runner import MjlabOnPolicyRunner  # noqa: E402
+
+from tasks.jumper.jump.mdp.reference import ref_state  # noqa: E402
+
+spec = tasks.get(TASK)
+cfg = tasks.load_env_cfg(spec.id, asset=spec.resolve_asset(None), play=False)
+cfg.scene.num_envs = N
+cfg.observations["actor"].enable_corruption = False
+cfg.events["reset_from_reference"].params["phase_range"] = (0.0, 0.001)
+for _k in ("focus_fraction", "roll_fraction"):           # every attempt starts standing
+    if _k in cfg.events["reset_from_reference"].params:
+        cfg.events["reset_from_reference"].params[_k] = 0.0
+cfg.events.pop("push_robot", None)
+env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+agent = tasks.load_agent_cfg(spec.id)
+w = RslRlVecEnvWrapper(env, clip_actions=agent.clip_actions)
+runner = MjlabOnPolicyRunner(w, asdict(agent), device="cpu")
+runner.load(ckpt, load_cfg={"actor": True}, strict=True, map_location="cpu")
+policy = runner.get_inference_policy(device="cpu")
+if __import__("os").environ.get("STOCH") == "1":     # sample actions as in training (the policy's own noise)
+    _det = policy
+    policy = lambda o: _det(o, stochastic_output=True)  # noqa: E731
+obs = w.get_observations()
+robot = env.scene["robot"]
+r, _, _, _ = ref_state(env, "jump")
+segs = r.meta["segments_s_after_go"]
+b0, b1 = segs["roll"][0], segs["roll"][1]
+
+alive = torch.ones(N, dtype=torch.bool)
+TIPS = ("LF_finger_tip_link", "RF_finger_tip_link", "LM_foot_tip_link", "RM_foot_tip_link",
+        "LR_foot_tip_link", "RR_foot_tip_link")
+tip_ids = [robot.body_names.index(b) for b in TIPS]
+spread_sum = torch.zeros(N)
+short_sum = torch.zeros(N)
+short_max = torch.zeros(N)
+swing_sq = torch.zeros(N)
+swing_max = torch.zeros(N)
+tilt_sq = torch.zeros(N)
+path_len = torch.zeros(N)
+sign_at_roll = torch.zeros(N)
+last_xy = robot.data.root_link_pos_w[:, :2].clone()
+last_yaw = torch.zeros(N)
+net_yaw = torch.zeros(N)
+abs_yaw = torch.zeros(N)
+spread_n = torch.zeros(N)
+last_t = torch.zeros(N)
+why = [""] * N
+wheel = torch.zeros(N)
+prev = None
+x0 = robot.data.root_link_pos_w[:, 0].clone()
+x_max = x0.clone()
+x_roll0 = torch.full((N,), float("nan"))
+x_roll1 = torch.full((N,), float("nan"))
+for k in range(int(env.max_episode_length) - 2):
+    with torch.no_grad():
+        obs, rew, dones, extras = w.step(policy(obs))
+    _, _, _, tsg = ref_state(env, "jump")
+    q = robot.data.root_link_quat_w
+    w_, x_, y_, z_ = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    bx = torch.stack([1 - 2 * (y_ * y_ + z_ * z_), 2 * (x_ * y_ + w_ * z_), 2 * (x_ * z_ - w_ * y_)], 1)
+    ang = torch.atan2(-bx[:, 2], bx[:, 0])
+    rolling = alive & (tsg >= b0) & (tsg < b1)
+    # turns about the robot's own axle (works on a curving path too)
+    axle = torch.stack([2 * (x_ * z_ + w_ * y_), 2 * (y_ * z_ - w_ * x_), 1 - 2 * (x_ * x_ + y_ * y_)], 1)
+    spin = -(robot.data.root_link_ang_vel_w * axle).sum(dim=1) * env.step_dt
+    wheel += torch.where(rolling, spin, torch.zeros_like(spin))
+    prev = ang
+    # leg spread: mean distance of the six tips from the hub, while rolling
+    d = (robot.data.body_link_pos_w[:, tip_ids] - robot.data.root_link_pos_w[:, None]).norm(dim=2).mean(dim=1)
+    spread_sum += torch.where(rolling, d, torch.zeros_like(d))
+    spread_n += rolling.float()
+    from tasks.jumper.cartwheel_full.full_mdp import leg_shortening
+    sh = leg_shortening(env).clamp(min=0)
+    short_sum += torch.where(rolling, sh.mean(dim=1), torch.zeros(N))
+    short_max = torch.where(rolling, torch.maximum(short_max, sh.max(dim=1).values), short_max)
+    from tasks.jumper.cartwheel_full.full_mdp import spoke_angle_error, spoke_tilt
+    sw = spoke_angle_error(env).abs()
+    swing_sq += torch.where(rolling, (sw * sw).mean(dim=1), torch.zeros(N))
+    swing_max = torch.where(rolling, torch.maximum(swing_max, sw.max(dim=1).values), swing_max)
+    tl = spoke_tilt(env)
+    tilt_sq += torch.where(rolling, (tl * tl).mean(dim=1), torch.zeros(N))
+    px = robot.data.root_link_pos_w[:, 0]
+    x_max = torch.where(alive, torch.maximum(x_max, px), x_max)
+    x_roll0 = torch.where(rolling & torch.isnan(x_roll0), px, x_roll0)
+    x_roll1 = torch.where(rolling, px, x_roll1)
+    if hasattr(env, "_eight_sign"):        # which way round this episode's 8 goes
+        sign_at_roll = torch.where(rolling & (sign_at_roll == 0), env._eight_sign, sign_at_roll)
+    pxy = robot.data.root_link_pos_w[:, :2]
+    if k > 0:
+        path_len += torch.where(rolling, (pxy - last_xy).norm(dim=1), torch.zeros(N))
+        yaw = torch.atan2(-axle[:, 0], axle[:, 1])          # travel direction = up x axle
+        dyaw = (yaw - last_yaw + math.pi) % (2 * math.pi) - math.pi
+        net_yaw += torch.where(rolling, dyaw, torch.zeros(N))
+        abs_yaw += torch.where(rolling, dyaw.abs(), torch.zeros(N))
+        last_yaw = yaw
+    else:
+        last_yaw = torch.atan2(-axle[:, 0], axle[:, 1])
+    last_xy = pxy.clone()
+    last_t = torch.where(alive, tsg, last_t)
+    tm = env.termination_manager
+    for i in dones.nonzero().flatten().tolist():
+        if alive[i]:
+            alive[i] = False
+            why[i] = ",".join(n for n in tm.active_terms if tm.get_term(n)[i])
+    if k == int(env.max_episode_length) - 4:
+        g_end = robot.data.projected_gravity_b[:, 2].clone()
+        v_end = robot.data.root_link_lin_vel_w.norm(dim=1).clone()
+        z_end = robot.data.root_link_pos_w[:, 2].clone()
+
+
+def stage(t):
+    for name, (a, b) in segs.items():
+        if t < b:
+            return name
+    return "end"
+
+
+print(f"roll segment {b0:.2f}-{b1:.2f}s after go")
+print("env: got to | wheel turns while rolling | path length while rolling | heading change (total, net) | leg spread while rolling (star 0.30 m) | ends upright | final speed | why it ended")
+full = 0
+for i in range(N):
+    up = float(g_end[i]) < -0.9
+    done_ok = alive[i] or why[i] == "time_out"
+    turns = abs(float(wheel[i])) / 360 * 180 / math.pi
+    trav = float(path_len[i])
+    if done_ok and up and turns >= 0.9:
+        full += 1
+    spread = float(spread_sum[i] / spread_n[i]) if spread_n[i] > 0 else float("nan")
+    print(f"  {i:2d}: {stage(float(last_t[i])):10s} {turns:5.2f} turns  {trav:5.2f} m path  "
+          f"turned {math.degrees(float(abs_yaw[i])):4.0f} deg (net {math.degrees(float(net_yaw[i])):+4.0f})  spread {spread:.2f} m  "
+          f"legs short {100 * float(short_sum[i] / spread_n[i]) if spread_n[i] > 0 else float('nan'):4.1f}% avg "
+          f"{100 * float(short_max[i]):4.1f}% worst  "
+          f"spokes off even {math.degrees(math.sqrt(float(swing_sq[i] / spread_n[i]))) if spread_n[i] > 0 else float('nan'):4.1f} deg rms "
+          f"{math.degrees(float(swing_max[i])):4.0f} worst, tilt {math.degrees(math.sqrt(float(tilt_sq[i] / spread_n[i]))) if spread_n[i] > 0 else float('nan'):4.1f} deg rms  "
+          f"{'upright' if up else 'not upright'} (g_z {float(g_end[i]):+.2f}, z {float(z_end[i]):.2f})  "
+          f"{float(v_end[i]):.2f} m/s  {why[i] or ('ran to the end' if alive[i] else '')}")
+print(f"full cartwheels (rolled >= 0.9 turn, ran to the end, finished upright): {full}/{N}")
+if TASK.startswith("jumper.cartwheel_stunt"):
+    from tasks.jumper.cartwheel_stunt import course as _cm
+    course = _cm.for_task(TASK)
+    cleared = (x_max > course.LAND_X + 0.2)
+    print("furthest x per env (kicker lip %.2f, landing lip %.2f, stand from %.2f):" % (course.LIP_X, course.LAND_X, course.STAND_X),
+          [round(float(v), 2) for v in x_max])
+    print(f"cleared the gap: {int(cleared.sum())}/{N}; cleared it and finished upright: "
+          f"{sum(1 for i in range(N) if cleared[i] and (alive[i] or why[i] == 'time_out') and float(g_end[i]) < -0.9)}/{N}")
+if TASK == "jumper.cartwheel_eight" and hasattr(env, "_eight_sign"):
+    eights = 0
+    for i in range(N):
+        ok8 = ((alive[i] or why[i] == "time_out") and float(g_end[i]) < -0.9
+               and math.degrees(float(abs_yaw[i])) >= 400 and abs(math.degrees(float(net_yaw[i]))) <= 90)
+        eights += ok8
+    print("loop order per env (+1 left first, -1 right first, 0 never reached the roll):",
+          [int(x) for x in sign_at_roll.tolist()])
+    print(f"figure 8s (ran to the end upright, turned >= 400 deg in total, net within 90 deg): {eights}/{N}")

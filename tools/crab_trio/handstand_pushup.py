@@ -1,4 +1,4 @@
-import sys; sys.path.insert(0,"/root/jumper/tools/crab_trio")
+import sys  # noqa: F401
 import math, numpy as np, mujoco, itertools, handstand as H
 m,d=H.setup(); dt=m.opt.timestep
 E0,W0,J0=0.5,0.1,0.6

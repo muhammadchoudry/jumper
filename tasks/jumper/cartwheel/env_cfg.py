@@ -5,7 +5,7 @@ residual actions around the reference, reference-state initialisation, dense
 imitation rewards), with what a cartwheel needs changed:
 
 - **Reference**: `ref/cartwheel_flat.npz` (kinematic, authored by
-  `tools/crab_trio/cartwheel_ref.py`): fanned crouch -> sideways push -> limbs
+  `tools/cartwheel/refs/cartwheel_ref.py`): fanned crouch -> sideways push -> limbs
   straight into a six-spoke star -> 360 degree roll -> stance -> home. Straight
   limbs carry load along their length, which is what keeps the spread pose inside
   the 1.75 N*m motors.

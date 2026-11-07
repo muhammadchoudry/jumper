@@ -1,6 +1,6 @@
 """The stunt courses: plateau, hill, kicker, gap, landing ramp, run-out.
 
-Sized in docs/jumper_stunt_plan.md (tools/crab_trio/stunt_calc.py). x runs along
+Sized in docs/jumper_stunt_plan.md (tools/cartwheel/physics/stunt_calc.py). x runs along
 the course in each env's own world (env_spacing 0: every env is its own MjData);
 the reference's run-up and jump happen on the plateau (it lands in the star at
 x ~ 1.75 m), and the hill starts at x = 2.4 m.

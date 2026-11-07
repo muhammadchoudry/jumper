@@ -19,7 +19,6 @@ import numpy as np
 
 import handstand as H
 
-sys.path.insert(0, "/root/scratch")
 
 
 def record_pushups():
